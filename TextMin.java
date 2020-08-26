@@ -13,6 +13,7 @@ import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+import org.apache.hadoop.mapreduce.Counters;
 
 import java.io.*;
 import java.io.IOException;
@@ -28,6 +29,13 @@ hadoop fs -cat features/part-r-00000
 
 public class TextMin
 {
+	public static enum Global_Counters 
+	{
+		TOTAL_TWEET_NUM, 
+		TOTAL_FEATURE_NUM
+	}
+
+
 	/* input:  <byte_offset, tweet>
      * output: <tweet_number, tweet>
      */
@@ -76,6 +84,8 @@ public class TextMin
 		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
+			context.getCounter(Global_Counters.TOTAL_TWEET_NUM).increment(1);
+
 			String line = value.toString();
 
             String[] columns = line.toString().split("\t");
@@ -202,7 +212,8 @@ public class TextMin
 			num_of_tweets = Integer.parseInt(conf.get("num_of_tweets"));
 		}
 		
-		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
+		{
 			int num_of_tweets_with_this_word = 0;
 			ArrayList<String> value_list = new ArrayList<String>();
 
@@ -221,6 +232,8 @@ public class TextMin
 				tfidf = (Double.parseDouble(divide_data[0])/Double.parseDouble(divide_data[1])) * Math.log(num_of_tweets/num_of_tweets_with_this_word);
 				
 				context.write(new Text(value_arr[0] + "@" + key.toString()), new Text(tfidf.toString()));
+
+				context.getCounter(Global_Counters.TOTAL_FEATURE_NUM).increment(1);
 			}			
 		}
     }
@@ -232,7 +245,6 @@ public class TextMin
 	public static class Map_FeatSel extends Mapper<Object, Text, NullWritable, Text>
 	{
 		private int features_to_keep;
-		//private TreeMap<Double, Text> top_features = new TreeMap<Double, Text>();
 		
 		private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
 
@@ -247,7 +259,6 @@ public class TextMin
 			
 			top_features.put(new Text(columns[0]), Double.parseDouble(columns[1]));	
 
-
 			List list = new LinkedList(top_features.entrySet());
 			Collections.sort(list, new Comparator()
 									{
@@ -260,7 +271,6 @@ public class TextMin
 									});
 
 
-
 			HashMap sorted_top_features = new LinkedHashMap();
 			for(Iterator i = list.iterator(); i.hasNext();)
 			{
@@ -269,12 +279,12 @@ public class TextMin
 				sorted_top_features.put(entry.getKey(), entry.getValue());
 			}
 
-
 			while(sorted_top_features.size() > features_to_keep)
 				sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
 
 			Set set = sorted_top_features.entrySet();
 			Iterator it = set.iterator();
+
 			while(it.hasNext())
 			{
 				java.util.Map.Entry me = (java.util.Map.Entry) it.next();
@@ -307,9 +317,6 @@ public class TextMin
 				top_features.put(new Text(columns[0]), Double.parseDouble(columns[1]));		
 			} 
 
-
-
-
 			List list = new LinkedList(top_features.entrySet());
 			Collections.sort(list, new Comparator()
 									{
@@ -321,8 +328,6 @@ public class TextMin
 										}
 									});
 
-
-
 			HashMap sorted_top_features = new LinkedHashMap();
 			for(Iterator i = list.iterator(); i.hasNext();)
 			{
@@ -331,12 +336,12 @@ public class TextMin
 				sorted_top_features.put(entry.getKey(), entry.getValue());
 			}
 
-
 			while(sorted_top_features.size() > features_to_keep)
 				sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
 
 			Set set = sorted_top_features.entrySet();
 			Iterator it = set.iterator();
+
 			while(it.hasNext())
 			{
 				java.util.Map.Entry me = (java.util.Map.Entry) it.next();
@@ -399,6 +404,11 @@ public class TextMin
 	    wordcount_job.waitForCompletion(true);
 
 
+        int num_of_tweets = Math.toIntExact(wordcount_job.getCounters().findCounter(Global_Counters.TOTAL_TWEET_NUM).getValue());
+        conf.set("num_of_tweets", String.valueOf(num_of_tweets));
+        System.out.println("TOTAL TWEET NUMBER: " + num_of_tweets);
+
+
 	    Job tf_job = Job.getInstance(conf, "TF");
 		tf_job.setJarByClass(TextMin.class);
 		tf_job.setMapperClass(Map_TF.class);
@@ -410,29 +420,6 @@ public class TextMin
 		FileInputFormat.addInputPath(tf_job, wordcount_dir);
 		FileOutputFormat.setOutputPath(tf_job, tf_dir);
 		tf_job.waitForCompletion(true);
-
-
-		/*  Calculating the total number of tweets from the input in order to find out the
-		 *	IDF of each word and finally calculate the TFIDF
-         */
-        Path input_path = new Path("input/tweets.csv");
-        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(input_path)));
-
-        int num_of_tweets = 0;
-
-        String line = br.readLine();
-
-        while(line != null)
-        {
-            line=br.readLine();
-            num_of_tweets++;
-        }
-
-        br.close();
-
-        conf.set("num_of_tweets", String.valueOf(num_of_tweets));
-        //////////////////////////////////////////////////////////////////////////////////
-
 
 		Job tfidf_job = Job.getInstance(conf, "TFIDF");
 		tfidf_job.setJarByClass(TextMin.class);
@@ -447,34 +434,13 @@ public class TextMin
 		tfidf_job.waitForCompletion(true);
 
 
-        /* Calculating the total number of words that got vectorized by counting lines at
-		 *	the `tfidf` directory, in order to find out how many words/features to keep,
-		 *	just so the model has to work only with the 20% of the most relevant of the
-		 *  features, based on the Pareto principle
-         */
-		FileSystem tfidf_fs = tfidf_dir.getFileSystem(conf);
-        FileStatus[] file_status = tfidf_fs.listStatus(tfidf_dir);
-        int lines = 0;
-
-        for(FileStatus i : file_status)
-        {
-        	Path current_file_path = i.getPath();
-
-        	if(i.isFile())
-        	{
-        		br = new BufferedReader(new InputStreamReader(fs.open(current_file_path))); 
-				//int file_lines = 0;
-				while (br.readLine() != null)
-		            lines++;
-
-		        br.close();
-        	}
-        }
-        
-        int features_to_keep = (lines * 20) / 100;
-
+        // Calculating the total number of words that got vectorized in order to find out how many words/features to keep, just 
+        // so the model has to work only with the 20% of the most relevant of the features, based on the Pareto principle
+        int num_of_features = Math.toIntExact(tfidf_job.getCounters().findCounter(Global_Counters.TOTAL_FEATURE_NUM).getValue());
+        System.out.println("TOTAL NUMBER OF FEATURES: " + num_of_features);
+        int features_to_keep = (num_of_features * 20) / 100;
         conf.set("features_to_keep", String.valueOf(features_to_keep));
-        //////////////////////////////////////////////////////////////////////////////////
+        System.out.println("FEATURES TO KEEP: " + features_to_keep);
 
 
         Job feature_selection_job = Job.getInstance(conf, "Feature Selection");
