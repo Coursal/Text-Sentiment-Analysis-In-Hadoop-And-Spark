@@ -36,18 +36,27 @@ public class TextMin
 	}
 
 
-	/* input:  <byte_offset, tweet>
-     * output: <tweet_number, tweet>
+
+	/* input:  <byte_offset, line_of_tweet>
+     * output: <(word@tweet), 1>
      */
-	public static class Map_PreProcess extends Mapper<Object, Text, Text, Text> 
+	public static class Map_WordCount extends Mapper<Object, Text, Text, IntWritable> 
 	{
+		private Text word_tweet_key = new Text();
+        private final static IntWritable one = new IntWritable(1);
+		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
+			context.getCounter(Global_Counters.TOTAL_TWEET_NUM).increment(1);
+
 			String line = value.toString();
 
-            String[] columns = line.split(",");
+			String[] columns = line.split(",");
 
-            // if the columns are more than 4, that means the text of the post had commas inside,  
+            //String[] columns = line.toString().split("\t");
+            //String[] tweet_text = columns[1].toString().split(" ");
+
+			// if the columns are more than 4, that means the text of the post had commas inside,  
             // so stitch the last columns together to form the post
             if(columns.length > 4)
             {
@@ -68,34 +77,17 @@ public class TextMin
                                 .trim()         				// trim the spaces before & after the whole string...
                                 .replaceAll("\\s+", " "); 		// and get rid of double spaces
 
+
             if(tweet_text != null && !tweet_text.trim().isEmpty())
-         		context.write(new Text(tweet_number), new Text(tweet_text));
-		}
-	}
-
-
-	/* input:  <byte_offset, line_of_tweet>
-     * output: <(word@tweet), 1>
-     */
-	public static class Map_WordCount extends Mapper<Object, Text, Text, IntWritable> 
-	{
-		private Text word_tweet_key = new Text();
-        private final static IntWritable one = new IntWritable(1);
-		
-		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
-		{
-			context.getCounter(Global_Counters.TOTAL_TWEET_NUM).increment(1);
-
-			String line = value.toString();
-
-            String[] columns = line.toString().split("\t");
-            String[] tweet_text = columns[1].toString().split(" ");
-
-            for(int i=0; i<tweet_text.length; i++)
             {
-                word_tweet_key.set(tweet_text[i] + "@" + columns[0]);
+	            String[] tweet_words = tweet_text.split(" ");
 
-                context.write(word_tweet_key, one);
+	            for(int i=0; i<tweet_words.length; i++)
+	            {
+	                word_tweet_key.set(tweet_words[i] + "@" + columns[0]);
+
+	                context.write(word_tweet_key, one);
+	            }
             }
 		}
     }
@@ -355,7 +347,6 @@ public class TextMin
 	public static void main(String[] args) throws Exception 
 	{
 		Path input_dir = new Path("input");
-		Path processed_dir = new Path("processed_tweets");
 		Path wordcount_dir = new Path("wordcount");
 		Path tf_dir = new Path("tf");
     	Path tfidf_dir = new Path("tfidf");
@@ -364,8 +355,6 @@ public class TextMin
 	    Configuration conf = new Configuration();
 
 	    FileSystem fs = FileSystem.get(conf);
-	    if(fs.exists(processed_dir))
-    		fs.delete(processed_dir, true);
     	if(fs.exists(wordcount_dir))
     		fs.delete(wordcount_dir, true);
     	if(fs.exists(tf_dir))
@@ -374,21 +363,6 @@ public class TextMin
     		fs.delete(tfidf_dir, true);
     	if(fs.exists(features_dir))
     		fs.delete(features_dir, true);
-
-
-    	Job preprocess_job = Job.getInstance(conf, "PreProcess Tweets");
-	    preprocess_job.setJarByClass(TextMin.class);
-	    preprocess_job.setMapperClass(Map_PreProcess.class);
-	    //preprocess_job.setCombinerClass(Reduce_PP.class);
-	    //preprocess_job.setReducerClass(Reduce_PP.class);
-	    preprocess_job.setMapOutputKeyClass(Text.class);
-		preprocess_job.setMapOutputValueClass(Text.class);
-	    preprocess_job.setOutputKeyClass(Text.class);
-	    preprocess_job.setOutputValueClass(Text.class);
-	    FileInputFormat.addInputPath(preprocess_job, input_dir);
-	    FileOutputFormat.setOutputPath(preprocess_job, processed_dir);
-	    preprocess_job.waitForCompletion(true);
-
 
 	    Job wordcount_job = Job.getInstance(conf, "Word Count");
 	    wordcount_job.setJarByClass(TextMin.class);
@@ -399,11 +373,12 @@ public class TextMin
 		wordcount_job.setMapOutputValueClass(IntWritable.class);
 	    wordcount_job.setOutputKeyClass(Text.class);
 	    wordcount_job.setOutputValueClass(IntWritable.class);
-	    FileInputFormat.addInputPath(wordcount_job, processed_dir);
+	    FileInputFormat.addInputPath(wordcount_job, input_dir);
 	    FileOutputFormat.setOutputPath(wordcount_job, wordcount_dir);
 	    wordcount_job.waitForCompletion(true);
 
 
+	    // Counting the total number of tweets from the training data in order to calculate the TFIDF score of each feature
         int num_of_tweets = Math.toIntExact(wordcount_job.getCounters().findCounter(Global_Counters.TOTAL_TWEET_NUM).getValue());
         conf.set("num_of_tweets", String.valueOf(num_of_tweets));
         System.out.println("TOTAL TWEET NUMBER: " + num_of_tweets);
