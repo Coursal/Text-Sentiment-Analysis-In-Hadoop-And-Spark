@@ -12,12 +12,14 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.Counters;
 
 import java.io.*;
 import java.io.IOException;
 import java.util.*;
+import java.nio.charset.StandardCharsets;
 
 /*
 Execution Guide:
@@ -32,7 +34,9 @@ public class TextMin
 	public static enum Global_Counters 
 	{
 		TOTAL_TWEET_NUM, 
-		TOTAL_FEATURE_NUM
+		TOTAL_FEATURE_NUM,
+		TOTAL_POS_TWEET_NUM,
+		TOTAL_NEG_TWEET_NUM
 	}
 
 
@@ -44,6 +48,8 @@ public class TextMin
 	{
 		private Text word_tweet_key = new Text();
         private final static IntWritable one = new IntWritable(1);
+
+        String positive_tweets_id_list = "";	// string that will hold every tweet IDs with positive sentiment
 		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
@@ -53,9 +59,6 @@ public class TextMin
 
 			String[] columns = line.split(",");
 
-            //String[] columns = line.toString().split("\t");
-            //String[] tweet_text = columns[1].toString().split(" ");
-
 			// if the columns are more than 4, that means the text of the post had commas inside,  
             // so stitch the last columns together to form the post
             if(columns.length > 4)
@@ -64,9 +67,17 @@ public class TextMin
                     columns[3] += columns[i];
             }
 
-            String tweet_number = columns[0];
+            String tweet_id = columns[0];
             String tweet_sentiment = columns[1];
             String tweet_text = columns[3];
+
+            if(tweet_sentiment.equals("1"))
+            {
+            	context.getCounter(Global_Counters.TOTAL_POS_TWEET_NUM).increment(1);
+            	positive_tweets_id_list += tweet_id + "*";	// using the '*' character as a delimiter between tweet IDs
+            }
+            else
+            	context.getCounter(Global_Counters.TOTAL_NEG_TWEET_NUM).increment(1);
 
             // clean the text of the tweet from links..
             tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
@@ -84,12 +95,22 @@ public class TextMin
 
 	            for(int i=0; i<tweet_words.length; i++)
 	            {
-	                word_tweet_key.set(tweet_words[i] + "@" + columns[0]);
+	                word_tweet_key.set(tweet_words[i] + "@" + tweet_id);
 
 	                context.write(word_tweet_key, one);
 	            }
             }
 		}
+
+		protected void cleanup(Context context) throws IOException, InterruptedException 
+		{
+			// create a file in the HDFS to store the tweet IDs with positive sentiment
+            FileSystem fs = FileSystem.get(context.getConfiguration());
+			Path path = new Path("positive_tweets_id_list");
+			FSDataOutputStream os = fs.create(path);
+			os.write(positive_tweets_id_list.getBytes(StandardCharsets.UTF_8));
+			os.close();
+        }
     }
 
     /* input:  <(word@tweet), 1>
@@ -144,7 +165,7 @@ public class TextMin
 			ArrayList<String> count_list = new ArrayList<String>();
 			ArrayList<String> word_by_count_list = new ArrayList<String>();
 
-			for( Text value : values)
+			for(Text value : values)
 			{
 				String[] splitted_key = value.toString().split("=");
 
@@ -170,6 +191,7 @@ public class TextMin
     }
 
 
+
     /* input:  <(word@tweet), (word_count/tweet_size)>
      * output: <word, (tweet=word_count/tweet_size)>
      */
@@ -191,7 +213,7 @@ public class TextMin
     }
 
     /* input:  <word, (tweet=word_count/tweet_size)>
-     * output: <tweet@word, TFIDF>
+     * output: <(tweet@word), TFIDF>
      */
 	public static class Reduce_TFIDF extends Reducer<Text, Text, Text, Text> 
 	{
@@ -231,13 +253,13 @@ public class TextMin
     }
 
 
-    /* input:  <tweet@word, TFIDF>
-     * output: <NULL, tweet@word_TFIDF>
+
+    /* input:  <(tweet@word), TFIDF>
+     * output: <NULL, (tweet@word_TFIDF)>
      */
 	public static class Map_FeatSel extends Mapper<Object, Text, NullWritable, Text>
 	{
 		private int features_to_keep;
-		
 		private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
 
 		protected void setup(Context context) throws IOException, InterruptedException 
@@ -291,8 +313,6 @@ public class TextMin
 	public static class Reduce_FeatSel extends Reducer<NullWritable, Text, Text, Text>
 	{
 		private int features_to_keep;
-		//private TreeMap<Double, Text> top_features = new TreeMap<Double, Text>();
-		
 		private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
 
 		protected void setup(Context context) throws IOException, InterruptedException 
@@ -344,13 +364,76 @@ public class TextMin
 
 
 
+	/* input:  <TFIDF, tweet@word>
+     * output: <word, tweet>
+     */
+	public static class Map_Train extends Mapper<Object, Text, Text, Text>
+	{	
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+		{
+			String[] columns = value.toString().split("\t");
+			
+			String splitted_value[] = columns[1].toString().split("@");
+
+			context.write(new Text(splitted_value[1]), new Text(splitted_value[0]));
+		}
+	}
+
+	/* input:  <word, tweet>
+     * output: <word, positive_count@negative_count>
+     */
+	public static class Reduce_Train extends Reducer<Text, Text, Text, Text> 
+	{
+		private String positive_tweets_IDs;
+		private String[] positive_tweets_IDs_arr;
+		
+		protected void setup(Context context) throws IOException, InterruptedException 
+		{
+			positive_tweets_IDs = context.getConfiguration().get("positive_tweets_IDs");
+			positive_tweets_IDs_arr = positive_tweets_IDs.split("\\*");
+		}
+
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
+		{
+			int sum = 0;
+
+			int positive_counter = 0;
+			int negative_counter = 0;
+
+			boolean flag = false;
+
+			for(Text value : values)
+			{
+				String current_tweet = value.toString();
+
+				for(String tweet_id : positive_tweets_IDs_arr)
+				{
+					if(current_tweet.equals(tweet_id))
+						flag = true;
+				}
+
+				if(flag)
+					positive_counter++;
+				else
+					negative_counter++;
+			}
+
+			context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));
+		}
+    }
+
+
 	public static void main(String[] args) throws Exception 
 	{
+		// paths to directories were inbetween and final job outputs are stored
 		Path input_dir = new Path("input");
 		Path wordcount_dir = new Path("wordcount");
 		Path tf_dir = new Path("tf");
     	Path tfidf_dir = new Path("tfidf");
     	Path features_dir = new Path("features");
+    	Path training_dir = new Path("training");
+
+    	Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
 
 	    Configuration conf = new Configuration();
 
@@ -363,6 +446,11 @@ public class TextMin
     		fs.delete(tfidf_dir, true);
     	if(fs.exists(features_dir))
     		fs.delete(features_dir, true);
+    	if(fs.exists(training_dir))
+    		fs.delete(training_dir, true);
+    	if(fs.exists(positive_tweets_id_list))
+    		fs.delete(positive_tweets_id_list, true);
+
 
 	    Job wordcount_job = Job.getInstance(conf, "Word Count");
 	    wordcount_job.setJarByClass(TextMin.class);
@@ -376,6 +464,13 @@ public class TextMin
 	    FileInputFormat.addInputPath(wordcount_job, input_dir);
 	    FileOutputFormat.setOutputPath(wordcount_job, wordcount_dir);
 	    wordcount_job.waitForCompletion(true);
+
+
+	    // read the file with the tweet IDs with positive sentiment
+        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(positive_tweets_id_list)));
+        String line = br.readLine();
+        br.close();
+        conf.set("positive_tweets_IDs", line);
 
 
 	    // Counting the total number of tweets from the training data in order to calculate the TFIDF score of each feature
@@ -430,5 +525,27 @@ public class TextMin
 		FileInputFormat.addInputPath(feature_selection_job, tfidf_dir);
 		FileOutputFormat.setOutputPath(feature_selection_job, features_dir);
 		feature_selection_job.waitForCompletion(true);
+
+		Job training_job = Job.getInstance(conf, "Training");
+		training_job.setJarByClass(TextMin.class);
+		training_job.setMapperClass(Map_Train.class);
+		training_job.setReducerClass(Reduce_Train.class);	
+		training_job.setMapOutputKeyClass(Text.class);
+		training_job.setMapOutputValueClass(Text.class);
+		training_job.setOutputKeyClass(Text.class);
+		training_job.setOutputValueClass(Text.class);
+		FileInputFormat.addInputPath(training_job, features_dir);
+		FileOutputFormat.setOutputPath(training_job, training_dir);
+		training_job.waitForCompletion(true);
+
+
+		/*
+			TODO:
+			find a way to get the label job right, somehow
+
+			maybe by adding a mapreduce job before the training job to output
+			sth like <tweet, words>, and then do the training like showed on
+			the "Sentiment Analysis of Social Media Using MapReduce" paper
+		*/
   	}
 }
