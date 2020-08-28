@@ -36,7 +36,12 @@ public class TextMin
 		TOTAL_TWEET_NUM, 
 		TOTAL_FEATURE_NUM,
 		TOTAL_POS_TWEET_NUM,
-		TOTAL_NEG_TWEET_NUM
+		TOTAL_NEG_TWEET_NUM,
+		FILTERED_TOTAL_TWEET_NUM,
+		FILTERED_POS_TWEET_NUM,
+		FILTERED_NEG_TWEET_NUM,
+		TOTAL_POS_WORDS,
+		TOTAL_NEG_WORDS
 	}
 
 
@@ -365,24 +370,29 @@ public class TextMin
 
 
 	/* input:  <TFIDF, tweet@word>
-     * output: <word, tweet>
+     * output: <tweet, word>
      */
-	public static class Map_Train extends Mapper<Object, Text, Text, Text>
-	{	
-		public void map(Object key, Text value, Context context) throws IOException, InterruptedException
+	public static class Map_Training_1 extends Mapper<Object, Text, Text, Text> 
+	{
+		private Text tweet_key = new Text();
+        private Text word_value = new Text();
+		
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
-			String[] columns = value.toString().split("\t");
-			
-			String splitted_value[] = columns[1].toString().split("@");
+			String lines[] = value.toString().split("\t");
+			String splitted_value[] = lines[1].toString().split("@");
 
-			context.write(new Text(splitted_value[1]), new Text(splitted_value[0]));
+			tweet_key.set(splitted_value[0]);
+			word_value.set(splitted_value[1]);
+
+			context.write(tweet_key, word_value);	   
 		}
-	}
+    }
 
-	/* input:  <word, tweet>
-     * output: <word, positive_count@negative_count>
+    /* input:  <tweet, word>
+     * output: <tweet, (tweet_text#sentiment)>
      */
-	public static class Reduce_Train extends Reducer<Text, Text, Text, Text> 
+	public static class Reduce_Training_1 extends Reducer<Text, Text, Text, Text> 
 	{
 		private String positive_tweets_IDs;
 		private String[] positive_tweets_IDs_arr;
@@ -395,32 +405,102 @@ public class TextMin
 
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
 		{
-			int sum = 0;
+			String tweet = key.toString();
 
-			int positive_counter = 0;
-			int negative_counter = 0;
+			context.getCounter(Global_Counters.FILTERED_TOTAL_TWEET_NUM).increment(1);
+
+			String word_list = "";
 
 			boolean flag = false;
+			String sentiment = "NEGATIVE";
+
+			for(String tweet_id : positive_tweets_IDs_arr)
+			{
+				if(tweet.equals(tweet_id))
+					flag = true;
+			}
+
+			if(flag)
+			{
+				sentiment = "POSITIVE";
+				context.getCounter(Global_Counters.FILTERED_POS_TWEET_NUM).increment(1);
+			}
+			else
+				context.getCounter(Global_Counters.FILTERED_NEG_TWEET_NUM).increment(1);
+
 
 			for(Text value : values)
 			{
-				String current_tweet = value.toString();
+				String word = value.toString();
 
-				for(String tweet_id : positive_tweets_IDs_arr)
-				{
-					if(current_tweet.equals(tweet_id))
-						flag = true;
-				}
 
-				if(flag)
+				word_list += word + " ";
+
+				if(sentiment.equals("POSITIVE"))
+					context.getCounter(Global_Counters.TOTAL_POS_WORDS).increment(1);
+				else
+					context.getCounter(Global_Counters.TOTAL_NEG_WORDS).increment(1);
+			} 
+			
+			
+			context.write(key, new Text(word_list + "#" + sentiment));
+		}
+    }
+
+
+
+    /* input:  <tweet, (tweet_text#sentiment)>
+     * output: <word, sentiment>
+     */
+	public static class Map_Training_2 extends Mapper<Object, Text, Text, Text> 
+	{
+		private Text word_key = new Text();
+        private Text sentiment_value = new Text();
+		
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
+		{
+			String lines[] = value.toString().split("\t");
+			String splitted_value[] = lines[1].toString().split("#");
+
+		
+			String[] tweet_words = splitted_value[0].split(" ");
+
+            for(String word : tweet_words)
+            {
+                word_key.set(word);
+                sentiment_value.set(splitted_value[1]);
+
+                context.write(word_key, sentiment_value);
+            }  
+		}
+    }
+
+    /* input:  <word, sentiment>
+     * output: <word, pos_wordcount@neg_wordcount>
+     */
+	public static class Reduce_Training_2 extends Reducer<Text, Text, Text, Text> 
+	{
+
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
+		{
+			int positive_counter = 0;
+			int negative_counter = 0;
+
+			for (Text value : values)
+			{
+				String sentiment = value.toString();
+				if(sentiment.equals("POSITIVE"))
 					positive_counter++;
 				else
 					negative_counter++;
 			}
 
+
 			context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));
+
 		}
     }
+
 
 
 	public static void main(String[] args) throws Exception 
@@ -431,7 +511,8 @@ public class TextMin
 		Path tf_dir = new Path("tf");
     	Path tfidf_dir = new Path("tfidf");
     	Path features_dir = new Path("features");
-    	Path training_dir = new Path("training");
+    	Path training_1_dir = new Path("training_1");
+    	Path training_2_dir = new Path("training_2");
 
     	Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
 
@@ -446,8 +527,10 @@ public class TextMin
     		fs.delete(tfidf_dir, true);
     	if(fs.exists(features_dir))
     		fs.delete(features_dir, true);
-    	if(fs.exists(training_dir))
-    		fs.delete(training_dir, true);
+    	if(fs.exists(training_1_dir))
+    		fs.delete(training_1_dir, true);
+    	if(fs.exists(training_2_dir))
+    		fs.delete(training_2_dir, true);
     	if(fs.exists(positive_tweets_id_list))
     		fs.delete(positive_tweets_id_list, true);
 
@@ -526,26 +609,28 @@ public class TextMin
 		FileOutputFormat.setOutputPath(feature_selection_job, features_dir);
 		feature_selection_job.waitForCompletion(true);
 
-		Job training_job = Job.getInstance(conf, "Training");
-		training_job.setJarByClass(TextMin.class);
-		training_job.setMapperClass(Map_Train.class);
-		training_job.setReducerClass(Reduce_Train.class);	
-		training_job.setMapOutputKeyClass(Text.class);
-		training_job.setMapOutputValueClass(Text.class);
-		training_job.setOutputKeyClass(Text.class);
-		training_job.setOutputValueClass(Text.class);
-		FileInputFormat.addInputPath(training_job, features_dir);
-		FileOutputFormat.setOutputPath(training_job, training_dir);
-		training_job.waitForCompletion(true);
+		Job training_1_job = Job.getInstance(conf, "Training Part 1");
+		training_1_job.setJarByClass(TextMin.class);
+		training_1_job.setMapperClass(Map_Training_1.class);
+		training_1_job.setReducerClass(Reduce_Training_1.class);	
+		training_1_job.setMapOutputKeyClass(Text.class);
+		training_1_job.setMapOutputValueClass(Text.class);
+		training_1_job.setOutputKeyClass(Text.class);
+		training_1_job.setOutputValueClass(Text.class);
+		FileInputFormat.addInputPath(training_1_job, features_dir);
+		FileOutputFormat.setOutputPath(training_1_job, training_1_dir);
+		training_1_job.waitForCompletion(true);
 
-
-		/*
-			TODO:
-			find a way to get the label job right, somehow
-
-			maybe by adding a mapreduce job before the training job to output
-			sth like <tweet, words>, and then do the training like showed on
-			the "Sentiment Analysis of Social Media Using MapReduce" paper
-		*/
+		Job training_2_job = Job.getInstance(conf, "Training Part 2");
+		training_2_job.setJarByClass(TextMin.class);
+		training_2_job.setMapperClass(Map_Training_2.class);
+		training_2_job.setReducerClass(Reduce_Training_2.class);	
+		training_2_job.setMapOutputKeyClass(Text.class);
+		training_2_job.setMapOutputValueClass(Text.class);
+		training_2_job.setOutputKeyClass(Text.class);
+		training_2_job.setOutputValueClass(Text.class);
+		FileInputFormat.addInputPath(training_2_job, training_1_dir);
+		FileOutputFormat.setOutputPath(training_2_job, training_2_dir);
+		training_2_job.waitForCompletion(true);
   	}
 }
