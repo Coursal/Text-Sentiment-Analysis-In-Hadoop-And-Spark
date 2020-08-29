@@ -3,7 +3,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -26,7 +26,7 @@ Execution Guide:
 hadoop com.sun.tools.javac.Main TextMin.java
 jar cf TextMin.jar TextMin*.class
 hadoop jar TextMin.jar TextMin
-hadoop fs -cat features/part-r-00000
+hadoop fs -cat output/part-r-00000
 */
 
 public class TextMin
@@ -41,7 +41,8 @@ public class TextMin
 		FILTERED_POS_TWEET_NUM,
 		FILTERED_NEG_TWEET_NUM,
 		TOTAL_POS_WORDS,
-		TOTAL_NEG_WORDS
+		TOTAL_NEG_WORDS,
+		FEATURE_SIZE
 	}
 
 
@@ -86,7 +87,7 @@ public class TextMin
 
             // clean the text of the tweet from links..
             tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
-                                .replaceAll("#|@.*?\\s", "")	// mentions and hashtags...
+                                .replaceAll("#|@|&.*?\\s", "")	// mentions, hashtags, special characters...
                                 .replaceAll("\\d+", "")			// numbers...
                                 .replaceAll("[^a-zA-Z ]", "")	// punctuation...
                                 .toLowerCase()  				// turn every character left to lowercase...
@@ -156,7 +157,7 @@ public class TextMin
     }
 
     /* input:  <tweet, (word=word_count)>
-     * output: <(word@tweet), (word_count/tweet_size)>
+     * output: <(word@tweet), (word_count/tweet_length)>
      */
 	public static class Reduce_TF extends Reducer<Text, Text, Text, Text> 
 	{
@@ -197,8 +198,8 @@ public class TextMin
 
 
 
-    /* input:  <(word@tweet), (word_count/tweet_size)>
-     * output: <word, (tweet=word_count/tweet_size)>
+    /* input:  <(word@tweet), (word_count/tweet_length)>
+     * output: <word, (tweet=word_count/tweet_length)>
      */
     public static class Map_TFIDF extends Mapper<Object, Text, Text, Text> 
     {
@@ -217,7 +218,7 @@ public class TextMin
 		}
     }
 
-    /* input:  <word, (tweet=word_count/tweet_size)>
+    /* input:  <word, (tweet=word_count/tweet_length)>
      * output: <(tweet@word), TFIDF>
      */
 	public static class Reduce_TFIDF extends Reducer<Text, Text, Text, Text> 
@@ -379,8 +380,8 @@ public class TextMin
 		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
-			String lines[] = value.toString().split("\t");
-			String splitted_value[] = lines[1].toString().split("@");
+			String line[] = value.toString().split("\t");
+			String splitted_value[] = line[1].toString().split("@");
 
 			tweet_key.set(splitted_value[0]);
 			word_value.set(splitted_value[1]);
@@ -459,8 +460,8 @@ public class TextMin
 		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
-			String lines[] = value.toString().split("\t");
-			String splitted_value[] = lines[1].toString().split("#");
+			String[] lines = value.toString().split("\t");
+			String[] splitted_value = lines[1].toString().split("#");
 
 		
 			String[] tweet_words = splitted_value[0].split(" ");
@@ -486,7 +487,7 @@ public class TextMin
 			int positive_counter = 0;
 			int negative_counter = 0;
 
-			for (Text value : values)
+			for(Text value : values)
 			{
 				String sentiment = value.toString();
 				if(sentiment.equals("POSITIVE"))
@@ -495,11 +496,154 @@ public class TextMin
 					negative_counter++;
 			}
 
-
 			context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));
-
+			context.getCounter(Global_Counters.FEATURE_SIZE).increment(1);		
 		}
     }
+
+
+
+     /* input: <byte_offset, line_of_tweet>
+     * output: <tweet, sentiment_value>
+     */
+	public static class Map_Testing extends Mapper<Object, Text, Text, DoubleWritable> 
+	{
+		// private Text word_key = new Text();
+  //       private Text sentiment_value = new Text();
+
+        int feature_size, tweets_size, pos_tweets_size, neg_tweets_size, pos_words_size, neg_words_size;
+        Double pos_class_probability, neg_class_probability;
+
+        HashMap<String, Integer> pos_words = new HashMap<String, Integer>();
+        HashMap<String, Integer> neg_words = new HashMap<String, Integer>();
+
+        protected void setup(Context context) throws IOException, InterruptedException 
+		{
+			// load all counters to be used for the calculation of the probabilities
+			feature_size = Integer.parseInt(context.getConfiguration().get("feature_size"));
+			tweets_size = Integer.parseInt(context.getConfiguration().get("tweets_size"));
+			pos_tweets_size = Integer.parseInt(context.getConfiguration().get("pos_tweets_size"));
+			neg_tweets_size = Integer.parseInt(context.getConfiguration().get("neg_tweets_size"));
+			pos_words_size = Integer.parseInt(context.getConfiguration().get("pos_words_size"));
+			neg_words_size = Integer.parseInt(context.getConfiguration().get("neg_words_size"));
+
+			pos_class_probability = ((double) pos_tweets_size)/tweets_size;
+			neg_class_probability = ((double) neg_tweets_size)/tweets_size;
+
+			System.out.println(pos_class_probability + "*****" + neg_class_probability);
+
+			// load the model of the last training job and fill two hashmaps of words with the number of
+			// occurences in positive and negative tweets
+			Path training_model = new Path("training_2");
+			FileSystem model_fs = training_model.getFileSystem(context.getConfiguration());
+	        FileStatus[] file_status = model_fs.listStatus(training_model);
+
+	        for(FileStatus i : file_status)
+	        {
+	        	Path current_file_path = i.getPath();
+
+	        	if(i.isFile())
+	        	{
+	        		BufferedReader br = new BufferedReader(new InputStreamReader(model_fs.open(current_file_path)));
+	        		String line; 
+
+					while((line = br.readLine()) != null)
+					{
+			            String[] columns = line.toString().split("\t");
+			            String[] pos_and_neg_counts = columns[1].split("@");
+
+			            pos_words.put(columns[0], Integer.parseInt(pos_and_neg_counts[0]));
+			            neg_words.put(columns[0], Integer.parseInt(pos_and_neg_counts[1]));
+					}
+
+			        br.close();
+	        	}
+	        }
+
+
+	  		// System.out.println("POS WORDS HASHMAP");
+			// for(Map.Entry<String,Integer> entry : pos_words.entrySet()) 
+			//   System.out.println(entry.getKey() + ", " + entry.getValue());
+			// System.out.println("***");
+			// System.out.println("NEG WORDS HASHMAP");
+			// for(Map.Entry<String,Integer> entry : neg_words.entrySet()) 
+			//   System.out.println(entry.getKey() + ", " + entry.getValue());
+		}
+		
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
+		{
+			String line = value.toString();
+			String[] columns = line.split(",");
+
+			// if the columns are more than 4, that means the text of the post had commas inside,  
+            // so stitch the last columns together to form the post
+            if(columns.length > 4)
+            {
+                for(int i=4; i<columns.length; i++)
+                    columns[3] += columns[i];
+            }
+
+            String tweet_id = columns[0];
+            String tweet_sentiment = columns[1];
+            String tweet_text = columns[3];
+
+            // clean the text of the tweet from links..
+            tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
+                                .replaceAll("#|@|&.*?\\s", "")	// mentions, hashtags, special characters...
+                                .replaceAll("\\d+", "")			// numbers...
+                                .replaceAll("[^a-zA-Z ]", "")	// punctuation...
+                                .toLowerCase()  				// turn every character left to lowercase...
+                                .trim()         				// trim the spaces before & after the whole string...
+                                .replaceAll("\\s+", " "); 		// and get rid of double spaces
+
+
+       //      if(tweet_text != null && !tweet_text.trim().isEmpty())
+       //      {
+	      //       String[] tweet_words = tweet_text.split(" ");
+
+
+	      //       for(String word : tweet_words)
+	      //       {
+	      //       	for(Map.Entry<String,Integer> entry : pos_words.entrySet()) 
+	      //       	{
+	      //       		if(word.equals(entry.getKey()))
+	      //       		{
+	      //       			/* TODO:
+							// 	Calculate propabilities for each feature of the testing tweet
+
+							// */
+	      //       		}
+	      //       	}
+	      //       }
+	      //   }
+
+
+
+            context.write(new Text(tweet_id + "@" + tweet_text), new DoubleWritable(2.52));
+		}
+    }
+
+ //    /* input:  <tweet, sentiment_value>
+ //     * output: <tweet, max_sentiment_value>
+ //     */
+	// public static class Reduce_Testing extends Reducer<Text, DoubleWritable, Text, DoubleWritable> 
+	// {
+
+	// 	public void reduce(Text key, Iterable<DoubleWritable> values, Context context) throws IOException, InterruptedException 
+	// 	{
+	
+	// 		for(DoubleWritable value : values)
+	// 		{
+	// 			String sentiment = value.toString();
+	// 			if(sentiment.equals("POSITIVE"))
+	// 				positive_counter++;
+	// 			else
+	// 				negative_counter++;
+	// 		}
+
+	// 		context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));	
+	// 	}
+ //    }
 
 
 
@@ -513,6 +657,8 @@ public class TextMin
     	Path features_dir = new Path("features");
     	Path training_1_dir = new Path("training_1");
     	Path training_2_dir = new Path("training_2");
+    	Path testing_dir = new Path("test_data");
+    	Path output_dir = new Path("output");
 
     	Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
 
@@ -531,6 +677,8 @@ public class TextMin
     		fs.delete(training_1_dir, true);
     	if(fs.exists(training_2_dir))
     		fs.delete(training_2_dir, true);
+    	if(fs.exists(output_dir))
+    		fs.delete(output_dir, true);
     	if(fs.exists(positive_tweets_id_list))
     		fs.delete(positive_tweets_id_list, true);
 
@@ -621,6 +769,17 @@ public class TextMin
 		FileOutputFormat.setOutputPath(training_1_job, training_1_dir);
 		training_1_job.waitForCompletion(true);
 
+		int tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.FILTERED_TOTAL_TWEET_NUM).getValue());
+		conf.set("tweets_size", String.valueOf(tweets_size));
+		int pos_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.FILTERED_POS_TWEET_NUM).getValue());
+		conf.set("pos_tweets_size", String.valueOf(pos_tweets_size));
+		int neg_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.FILTERED_NEG_TWEET_NUM).getValue());
+		conf.set("neg_tweets_size", String.valueOf(neg_tweets_size));
+		int pos_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.TOTAL_POS_WORDS).getValue());
+		conf.set("pos_words_size", String.valueOf(pos_words_size));
+		int neg_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.TOTAL_NEG_WORDS).getValue());
+		conf.set("neg_words_size", String.valueOf(neg_words_size));
+
 		Job training_2_job = Job.getInstance(conf, "Training Part 2");
 		training_2_job.setJarByClass(TextMin.class);
 		training_2_job.setMapperClass(Map_Training_2.class);
@@ -632,5 +791,20 @@ public class TextMin
 		FileInputFormat.addInputPath(training_2_job, training_1_dir);
 		FileOutputFormat.setOutputPath(training_2_job, training_2_dir);
 		training_2_job.waitForCompletion(true);
+
+		int feature_size = Math.toIntExact(training_2_job.getCounters().findCounter(Global_Counters.FEATURE_SIZE).getValue());
+		conf.set("feature_size", String.valueOf(feature_size));
+
+		Job testing_job = Job.getInstance(conf, "Testing");
+		testing_job.setJarByClass(TextMin.class);
+		testing_job.setMapperClass(Map_Testing.class);
+		//testing_job.setReducerClass(Reduce_Testing.class);	
+		testing_job.setMapOutputKeyClass(Text.class);
+		testing_job.setMapOutputValueClass(DoubleWritable.class);
+		testing_job.setOutputKeyClass(Text.class);
+		testing_job.setOutputValueClass(DoubleWritable.class);
+		FileInputFormat.addInputPath(testing_job, testing_dir);
+		FileOutputFormat.setOutputPath(testing_job, output_dir);
+		testing_job.waitForCompletion(true);
   	}
 }
