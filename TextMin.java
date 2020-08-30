@@ -33,16 +33,18 @@ public class TextMin
 {
 	public static enum Global_Counters 
 	{
-		TOTAL_TWEET_NUM, 
-		TOTAL_FEATURE_NUM,
-		TOTAL_POS_TWEET_NUM,
-		TOTAL_NEG_TWEET_NUM,
-		FILTERED_TOTAL_TWEET_NUM,
-		FILTERED_POS_TWEET_NUM,
-		FILTERED_NEG_TWEET_NUM,
-		TOTAL_POS_WORDS,
-		TOTAL_NEG_WORDS,
-		FEATURE_SIZE
+		NUM_OF_TWEETS, 
+		NUM_OF_FEATURES,
+		TWEETS_SIZE,
+		POS_TWEETS_SIZE,
+		NEG_TWEETS_SIZE,
+		POS_WORDS_SIZE,
+		NEG_WORDS_SIZE,
+		FEATURES_SIZE,
+		TRUE_POSITIVE_RATE,
+		FALSE_POSITIVE_RATE,
+		TRUE_NEGATIVE_RATE,
+		FALSE_NEGATIVE_RATE
 	}
 
 
@@ -55,18 +57,19 @@ public class TextMin
 		private Text word_tweet_key = new Text();
         private final static IntWritable one = new IntWritable(1);
 
-        String positive_tweets_id_list = "";	// string that will hold every tweet IDs with positive sentiment
+        // string that will hold every tweet IDs with positive sentiment in order to determine the tweets with positive
+        // and negative sentiment after the feature selection
+        String positive_tweets_id_list = "";	
 		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
 		{
-			context.getCounter(Global_Counters.TOTAL_TWEET_NUM).increment(1);
+			context.getCounter(Global_Counters.NUM_OF_TWEETS).increment(1);
 
 			String line = value.toString();
-
 			String[] columns = line.split(",");
 
 			// if the columns are more than 4, that means the text of the post had commas inside,  
-            // so stitch the last columns together to form the post
+            // so stitch the last columns together to form the full text of the tweet
             if(columns.length > 4)
             {
                 for(int i=4; i<columns.length; i++)
@@ -78,12 +81,8 @@ public class TextMin
             String tweet_text = columns[3];
 
             if(tweet_sentiment.equals("1"))
-            {
-            	context.getCounter(Global_Counters.TOTAL_POS_TWEET_NUM).increment(1);
             	positive_tweets_id_list += tweet_id + "*";	// using the '*' character as a delimiter between tweet IDs
-            }
-            else
-            	context.getCounter(Global_Counters.TOTAL_NEG_TWEET_NUM).increment(1);
+
 
             // clean the text of the tweet from links..
             tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
@@ -183,7 +182,7 @@ public class TextMin
 			
 			// create the count/total in the list
 			for(String count : count_list)
-				word_by_count_list.add(count+"/"+total);
+				word_by_count_list.add(count + "/" + total);
 		
 			// create the iterator for word_list and word_by_count_list and write the key-value pair in the context
 			Iterator<String> wl = word_list.iterator();
@@ -243,7 +242,7 @@ public class TextMin
 				num_of_tweets_with_this_word++;
 			}
 
-			// access the Arraylist created above and arrange them in the required format
+			// access the list created above, calculate the TFIDF for each word and arrange the values in the required format
 			for (String value : value_list)
 			{
 				String[] value_arr = value.split("=");
@@ -253,7 +252,7 @@ public class TextMin
 				
 				context.write(new Text(value_arr[0] + "@" + key.toString()), new Text(tfidf.toString()));
 
-				context.getCounter(Global_Counters.TOTAL_FEATURE_NUM).increment(1);
+				context.getCounter(Global_Counters.NUM_OF_FEATURES).increment(1);
 			}			
 		}
     }
@@ -279,6 +278,7 @@ public class TextMin
 			
 			top_features.put(new Text(columns[0]), Double.parseDouble(columns[1]));	
 
+			// sort the words by their TFIDF score
 			List list = new LinkedList(top_features.entrySet());
 			Collections.sort(list, new Comparator()
 									{
@@ -295,16 +295,15 @@ public class TextMin
 			for(Iterator i = list.iterator(); i.hasNext();)
 			{
 				java.util.Map.Entry entry = (java.util.Map.Entry) i.next();
-
 				sorted_top_features.put(entry.getKey(), entry.getValue());
 			}
 
+			// hold the words with the biggest TFIDF score
 			while(sorted_top_features.size() > features_to_keep)
 				sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
 
 			Set set = sorted_top_features.entrySet();
 			Iterator it = set.iterator();
-
 			while(it.hasNext())
 			{
 				java.util.Map.Entry me = (java.util.Map.Entry) it.next();
@@ -331,10 +330,10 @@ public class TextMin
 			for(Text value : values) 
 			{		
 				String[] columns = value.toString().split("_");
-
 				top_features.put(new Text(columns[0]), Double.parseDouble(columns[1]));		
 			} 
 
+			// sort the words by their TFIDF score
 			List list = new LinkedList(top_features.entrySet());
 			Collections.sort(list, new Comparator()
 									{
@@ -350,10 +349,10 @@ public class TextMin
 			for(Iterator i = list.iterator(); i.hasNext();)
 			{
 				java.util.Map.Entry entry = (java.util.Map.Entry) i.next();
-
 				sorted_top_features.put(entry.getKey(), entry.getValue());
 			}
 
+			// hold the words with the biggest TFIDF score
 			while(sorted_top_features.size() > features_to_keep)
 				sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
 
@@ -408,7 +407,7 @@ public class TextMin
 		{
 			String tweet = key.toString();
 
-			context.getCounter(Global_Counters.FILTERED_TOTAL_TWEET_NUM).increment(1);
+			context.getCounter(Global_Counters.TWEETS_SIZE).increment(1);
 
 			String word_list = "";
 
@@ -424,10 +423,10 @@ public class TextMin
 			if(flag)
 			{
 				sentiment = "POSITIVE";
-				context.getCounter(Global_Counters.FILTERED_POS_TWEET_NUM).increment(1);
+				context.getCounter(Global_Counters.POS_TWEETS_SIZE).increment(1);
 			}
 			else
-				context.getCounter(Global_Counters.FILTERED_NEG_TWEET_NUM).increment(1);
+				context.getCounter(Global_Counters.NEG_TWEETS_SIZE).increment(1);
 
 
 			for(Text value : values)
@@ -438,9 +437,9 @@ public class TextMin
 				word_list += word + " ";
 
 				if(sentiment.equals("POSITIVE"))
-					context.getCounter(Global_Counters.TOTAL_POS_WORDS).increment(1);
+					context.getCounter(Global_Counters.POS_WORDS_SIZE).increment(1);
 				else
-					context.getCounter(Global_Counters.TOTAL_NEG_WORDS).increment(1);
+					context.getCounter(Global_Counters.NEG_WORDS_SIZE).increment(1);
 			} 
 			
 			
@@ -462,8 +461,6 @@ public class TextMin
 		{
 			String[] lines = value.toString().split("\t");
 			String[] splitted_value = lines[1].toString().split("#");
-
-		
 			String[] tweet_words = splitted_value[0].split(" ");
 
             for(String word : tweet_words)
@@ -481,12 +478,12 @@ public class TextMin
      */
 	public static class Reduce_Training_2 extends Reducer<Text, Text, Text, Text> 
 	{
-
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
 		{
 			int positive_counter = 0;
 			int negative_counter = 0;
 
+			// for each word, count the occurences in tweets with positive/negative sentiment
 			for(Text value : values)
 			{
 				String sentiment = value.toString();
@@ -497,40 +494,44 @@ public class TextMin
 			}
 
 			context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));
-			context.getCounter(Global_Counters.FEATURE_SIZE).increment(1);		
+			context.getCounter(Global_Counters.FEATURES_SIZE).increment(1);		
 		}
     }
 
 
 
-     /* input: <byte_offset, line_of_tweet>
-     * output: <tweet, sentiment_value>
+    /* input: <byte_offset, line_of_tweet>
+     * output: <tweet@tweet_text, sentiment>
      */
-	public static class Map_Testing extends Mapper<Object, Text, Text, DoubleWritable> 
+	public static class Map_Testing extends Mapper<Object, Text, Text, Text> 
 	{
-		// private Text word_key = new Text();
-  //       private Text sentiment_value = new Text();
-
-        int feature_size, tweets_size, pos_tweets_size, neg_tweets_size, pos_words_size, neg_words_size;
+        int features_size, tweets_size, pos_tweets_size, neg_tweets_size, pos_words_size, neg_words_size;
         Double pos_class_probability, neg_class_probability;
 
+        // hashmaps with each word as key and its number of occurences in each class as value
         HashMap<String, Integer> pos_words = new HashMap<String, Integer>();
         HashMap<String, Integer> neg_words = new HashMap<String, Integer>();
+
+        // hashmaps with each word as key and its probability in each class as value
+        HashMap<String, Double> pos_words_probabilities = new HashMap<String, Double>();
+        HashMap<String, Double> neg_words_probabilities = new HashMap<String, Double>();
+
+        // lists holding all probabilities to be multiplied together, along with the positive/negative class probability
+        ArrayList<Double> pos_probabilities_list = new ArrayList<Double>();
+        ArrayList<Double> neg_probabilities_list = new ArrayList<Double>();
 
         protected void setup(Context context) throws IOException, InterruptedException 
 		{
 			// load all counters to be used for the calculation of the probabilities
-			feature_size = Integer.parseInt(context.getConfiguration().get("feature_size"));
+			features_size = Integer.parseInt(context.getConfiguration().get("features_size"));
 			tweets_size = Integer.parseInt(context.getConfiguration().get("tweets_size"));
 			pos_tweets_size = Integer.parseInt(context.getConfiguration().get("pos_tweets_size"));
 			neg_tweets_size = Integer.parseInt(context.getConfiguration().get("neg_tweets_size"));
 			pos_words_size = Integer.parseInt(context.getConfiguration().get("pos_words_size"));
 			neg_words_size = Integer.parseInt(context.getConfiguration().get("neg_words_size"));
 
-			pos_class_probability = ((double) pos_tweets_size)/tweets_size;
-			neg_class_probability = ((double) neg_tweets_size)/tweets_size;
-
-			System.out.println(pos_class_probability + "*****" + neg_class_probability);
+			pos_class_probability = ((double) pos_tweets_size) / tweets_size;
+			neg_class_probability = ((double) neg_tweets_size) / tweets_size;
 
 			// load the model of the last training job and fill two hashmaps of words with the number of
 			// occurences in positive and negative tweets
@@ -560,14 +561,12 @@ public class TextMin
 	        	}
 	        }
 
-
-	  		// System.out.println("POS WORDS HASHMAP");
-			// for(Map.Entry<String,Integer> entry : pos_words.entrySet()) 
-			//   System.out.println(entry.getKey() + ", " + entry.getValue());
-			// System.out.println("***");
-			// System.out.println("NEG WORDS HASHMAP");
-			// for(Map.Entry<String,Integer> entry : neg_words.entrySet()) 
-			//   System.out.println(entry.getKey() + ", " + entry.getValue());
+	        // calculate all the word probabilities for positive and negative class (with laplace smoothing)
+	        for(Map.Entry<String,Integer> entry : pos_words.entrySet()) 
+        	{
+				pos_words_probabilities.put(entry.getKey(), ((double) entry.getValue() + 1) / (pos_words_size + features_size));
+				neg_words_probabilities.put(entry.getKey(), ((double) neg_words.get(entry.getKey()) + 1) / (neg_words_size + features_size));
+        	}
 		}
 		
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
@@ -596,54 +595,49 @@ public class TextMin
                                 .trim()         				// trim the spaces before & after the whole string...
                                 .replaceAll("\\s+", " "); 		// and get rid of double spaces
 
+          	// initialize the probabilities with the class probability of each sentiment
+            Double pos_probability = pos_class_probability;
+            Double neg_probability = neg_class_probability;
 
-       //      if(tweet_text != null && !tweet_text.trim().isEmpty())
-       //      {
-	      //       String[] tweet_words = tweet_text.split(" ");
+            // calculate the product of the probabilities of the words (+ the class probability) for each class
+            if(tweet_text != null && !tweet_text.trim().isEmpty())
+            {
+	            String[] tweet_words = tweet_text.split(" ");
 
+	            for(String word : tweet_words)
+	            {
+	            	for(Map.Entry<String,Double> entry : pos_words_probabilities.entrySet()) 
+	            	{
+	            		if(word.equals(entry.getKey()))
+	            		{
+							pos_probability = ((double) pos_probability) * pos_words_probabilities.get(word);
+							neg_probability = ((double) neg_probability) * neg_words_probabilities.get(word);
+	            		}
+	            	}
+	            }
+	        }
 
-	      //       for(String word : tweet_words)
-	      //       {
-	      //       	for(Map.Entry<String,Integer> entry : pos_words.entrySet()) 
-	      //       	{
-	      //       		if(word.equals(entry.getKey()))
-	      //       		{
-	      //       			/* TODO:
-							// 	Calculate propabilities for each feature of the testing tweet
+	        // compare and set the max value of the two class probabilities as the result of the guessed sentiment for every tweet
+	        if(Double.compare(pos_probability, neg_probability) > 0)
+	        {
+	        	if(tweet_sentiment.equals("1"))
+	        		context.getCounter(Global_Counters.TRUE_POSITIVE_RATE).increment(1);
+	        	else
+	        		context.getCounter(Global_Counters.FALSE_POSITIVE_RATE).increment(1);
 
-							// */
-	      //       		}
-	      //       	}
-	      //       }
-	      //   }
+            	context.write(new Text(tweet_id + "@" + tweet_text), new Text("POSITIVE"));
+	        }
+           	else
+           	{
+           		if(tweet_sentiment.equals("0"))
+	        		context.getCounter(Global_Counters.TRUE_NEGATIVE_RATE).increment(1);
+	        	else
+	        		context.getCounter(Global_Counters.FALSE_NEGATIVE_RATE).increment(1);
 
-
-
-            context.write(new Text(tweet_id + "@" + tweet_text), new DoubleWritable(2.52));
+           		context.write(new Text(tweet_id + "@" + tweet_text), new Text("NEGATIVE"));
+           	}
 		}
     }
-
- //    /* input:  <tweet, sentiment_value>
- //     * output: <tweet, max_sentiment_value>
- //     */
-	// public static class Reduce_Testing extends Reducer<Text, DoubleWritable, Text, DoubleWritable> 
-	// {
-
-	// 	public void reduce(Text key, Iterable<DoubleWritable> values, Context context) throws IOException, InterruptedException 
-	// 	{
-	
-	// 		for(DoubleWritable value : values)
-	// 		{
-	// 			String sentiment = value.toString();
-	// 			if(sentiment.equals("POSITIVE"))
-	// 				positive_counter++;
-	// 			else
-	// 				negative_counter++;
-	// 		}
-
-	// 		context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));	
-	// 	}
- //    }
 
 
 
@@ -682,6 +676,7 @@ public class TextMin
     	if(fs.exists(positive_tweets_id_list))
     		fs.delete(positive_tweets_id_list, true);
 
+    	long start_time = System.nanoTime();
 
 	    Job wordcount_job = Job.getInstance(conf, "Word Count");
 	    wordcount_job.setJarByClass(TextMin.class);
@@ -705,7 +700,7 @@ public class TextMin
 
 
 	    // Counting the total number of tweets from the training data in order to calculate the TFIDF score of each feature
-        int num_of_tweets = Math.toIntExact(wordcount_job.getCounters().findCounter(Global_Counters.TOTAL_TWEET_NUM).getValue());
+        int num_of_tweets = Math.toIntExact(wordcount_job.getCounters().findCounter(Global_Counters.NUM_OF_TWEETS).getValue());
         conf.set("num_of_tweets", String.valueOf(num_of_tweets));
         System.out.println("TOTAL TWEET NUMBER: " + num_of_tweets);
 
@@ -737,7 +732,7 @@ public class TextMin
 
         // Calculating the total number of words that got vectorized in order to find out how many words/features to keep, just 
         // so the model has to work only with the 20% of the most relevant of the features, based on the Pareto principle
-        int num_of_features = Math.toIntExact(tfidf_job.getCounters().findCounter(Global_Counters.TOTAL_FEATURE_NUM).getValue());
+        int num_of_features = Math.toIntExact(tfidf_job.getCounters().findCounter(Global_Counters.NUM_OF_FEATURES).getValue());
         System.out.println("TOTAL NUMBER OF FEATURES: " + num_of_features);
         int features_to_keep = (num_of_features * 20) / 100;
         conf.set("features_to_keep", String.valueOf(features_to_keep));
@@ -769,15 +764,15 @@ public class TextMin
 		FileOutputFormat.setOutputPath(training_1_job, training_1_dir);
 		training_1_job.waitForCompletion(true);
 
-		int tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.FILTERED_TOTAL_TWEET_NUM).getValue());
+		int tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
 		conf.set("tweets_size", String.valueOf(tweets_size));
-		int pos_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.FILTERED_POS_TWEET_NUM).getValue());
+		int pos_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
 		conf.set("pos_tweets_size", String.valueOf(pos_tweets_size));
-		int neg_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.FILTERED_NEG_TWEET_NUM).getValue());
+		int neg_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
 		conf.set("neg_tweets_size", String.valueOf(neg_tweets_size));
-		int pos_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.TOTAL_POS_WORDS).getValue());
+		int pos_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
 		conf.set("pos_words_size", String.valueOf(pos_words_size));
-		int neg_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.TOTAL_NEG_WORDS).getValue());
+		int neg_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
 		conf.set("neg_words_size", String.valueOf(neg_words_size));
 
 		Job training_2_job = Job.getInstance(conf, "Training Part 2");
@@ -792,19 +787,34 @@ public class TextMin
 		FileOutputFormat.setOutputPath(training_2_job, training_2_dir);
 		training_2_job.waitForCompletion(true);
 
-		int feature_size = Math.toIntExact(training_2_job.getCounters().findCounter(Global_Counters.FEATURE_SIZE).getValue());
-		conf.set("feature_size", String.valueOf(feature_size));
+		int features_size = Math.toIntExact(training_2_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
+		conf.set("features_size", String.valueOf(features_size));
 
 		Job testing_job = Job.getInstance(conf, "Testing");
 		testing_job.setJarByClass(TextMin.class);
-		testing_job.setMapperClass(Map_Testing.class);
-		//testing_job.setReducerClass(Reduce_Testing.class);	
+		testing_job.setMapperClass(Map_Testing.class);	
 		testing_job.setMapOutputKeyClass(Text.class);
-		testing_job.setMapOutputValueClass(DoubleWritable.class);
+		testing_job.setMapOutputValueClass(Text.class);
 		testing_job.setOutputKeyClass(Text.class);
-		testing_job.setOutputValueClass(DoubleWritable.class);
+		testing_job.setOutputValueClass(Text.class);
 		FileInputFormat.addInputPath(testing_job, testing_dir);
 		FileOutputFormat.setOutputPath(testing_job, output_dir);
 		testing_job.waitForCompletion(true);
+
+		System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F);
+
+		int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE_RATE).getValue());
+		int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE_RATE).getValue());
+		int tn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_NEGATIVE_RATE).getValue());
+		int fn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_NEGATIVE_RATE).getValue());
+
+		System.out.println("\nCONFUSION MATRIX:");
+		System.out.printf("%-10s %-10s \n", tp, fp);
+		System.out.printf("%-10s %-10s \n\n", fn, tn);
+
+		System.out.printf("%-15s %-10s \n", "SENSITIVITY: ", ((double) tp) / (tp + fn));
+		System.out.printf("%-15s %-10s \n", "PRECISION: ", ((double) tp) / (tp + fp));
+		System.out.printf("%-15s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
+		System.out.printf("%-15s %-10s \n", "F1 SCORE: ", ((double) (2 * tp)) / (2*tp + fp + fn));
   	}
 }
