@@ -801,7 +801,7 @@ public class TextMin
 		FileOutputFormat.setOutputPath(testing_job, output_dir);
 		testing_job.waitForCompletion(true);
 
-		System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F);
+		System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
 
 		int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE_RATE).getValue());
 		int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE_RATE).getValue());
