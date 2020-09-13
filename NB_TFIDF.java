@@ -23,13 +23,13 @@ import java.nio.charset.StandardCharsets;
 
 /*
 Execution Guide:
-hadoop com.sun.tools.javac.Main TextMin.java
-jar cf TextMin.jar TextMin*.class
-hadoop jar TextMin.jar TextMin
+hadoop com.sun.tools.javac.Main NB_TFIDF.java
+jar cf NB_TFIDF.jar NB_TFIDF*.class
+hadoop jar NB_TFIDF.jar NB_TFIDF
 hadoop fs -cat output/part-r-00000
 */
 
-public class TextMin
+public class NB_TFIDF
 {
 	public static enum Global_Counters 
 	{
@@ -480,6 +480,8 @@ public class TextMin
 	{
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
 		{
+			context.getCounter(Global_Counters.FEATURES_SIZE).increment(1);	
+
 			int positive_counter = 0;
 			int negative_counter = 0;
 
@@ -493,8 +495,7 @@ public class TextMin
 					negative_counter++;
 			}
 
-			context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));
-			context.getCounter(Global_Counters.FEATURES_SIZE).increment(1);		
+			context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));	
 		}
     }
 
@@ -679,7 +680,7 @@ public class TextMin
     	long start_time = System.nanoTime();
 
 	    Job wordcount_job = Job.getInstance(conf, "Word Count");
-	    wordcount_job.setJarByClass(TextMin.class);
+	    wordcount_job.setJarByClass(NB_TFIDF.class);
 	    wordcount_job.setMapperClass(Map_WordCount.class);
 	    wordcount_job.setCombinerClass(Reduce_WordCount.class);
 	    wordcount_job.setReducerClass(Reduce_WordCount.class);
@@ -706,7 +707,7 @@ public class TextMin
 
 
 	    Job tf_job = Job.getInstance(conf, "TF");
-		tf_job.setJarByClass(TextMin.class);
+		tf_job.setJarByClass(NB_TFIDF.class);
 		tf_job.setMapperClass(Map_TF.class);
 		tf_job.setReducerClass(Reduce_TF.class);
 		tf_job.setMapOutputKeyClass(Text.class);
@@ -718,7 +719,7 @@ public class TextMin
 		tf_job.waitForCompletion(true);
 
 		Job tfidf_job = Job.getInstance(conf, "TFIDF");
-		tfidf_job.setJarByClass(TextMin.class);
+		tfidf_job.setJarByClass(NB_TFIDF.class);
 		tfidf_job.setMapperClass(Map_TFIDF.class);
 		tfidf_job.setReducerClass(Reduce_TFIDF.class);
 		tfidf_job.setMapOutputKeyClass(Text.class);
@@ -740,7 +741,7 @@ public class TextMin
 
 
         Job feature_selection_job = Job.getInstance(conf, "Feature Selection");
-		feature_selection_job.setJarByClass(TextMin.class);
+		feature_selection_job.setJarByClass(NB_TFIDF.class);
 		feature_selection_job.setMapperClass(Map_FeatSel.class);
 		feature_selection_job.setReducerClass(Reduce_FeatSel.class);
 		feature_selection_job.setNumReduceTasks(1);	
@@ -753,7 +754,7 @@ public class TextMin
 		feature_selection_job.waitForCompletion(true);
 
 		Job training_1_job = Job.getInstance(conf, "Training Part 1");
-		training_1_job.setJarByClass(TextMin.class);
+		training_1_job.setJarByClass(NB_TFIDF.class);
 		training_1_job.setMapperClass(Map_Training_1.class);
 		training_1_job.setReducerClass(Reduce_Training_1.class);	
 		training_1_job.setMapOutputKeyClass(Text.class);
@@ -776,7 +777,7 @@ public class TextMin
 		conf.set("neg_words_size", String.valueOf(neg_words_size));
 
 		Job training_2_job = Job.getInstance(conf, "Training Part 2");
-		training_2_job.setJarByClass(TextMin.class);
+		training_2_job.setJarByClass(NB_TFIDF.class);
 		training_2_job.setMapperClass(Map_Training_2.class);
 		training_2_job.setReducerClass(Reduce_Training_2.class);	
 		training_2_job.setMapOutputKeyClass(Text.class);
@@ -791,7 +792,7 @@ public class TextMin
 		conf.set("features_size", String.valueOf(features_size));
 
 		Job testing_job = Job.getInstance(conf, "Testing");
-		testing_job.setJarByClass(TextMin.class);
+		testing_job.setJarByClass(NB_TFIDF.class);
 		testing_job.setMapperClass(Map_Testing.class);	
 		testing_job.setMapOutputKeyClass(Text.class);
 		testing_job.setMapOutputValueClass(Text.class);
@@ -812,9 +813,10 @@ public class TextMin
 		System.out.printf("%-10s %-10s \n", tp, fp);
 		System.out.printf("%-10s %-10s \n\n", fn, tn);
 
-		System.out.printf("%-15s %-10s \n", "SENSITIVITY: ", ((double) tp) / (tp + fn));
-		System.out.printf("%-15s %-10s \n", "PRECISION: ", ((double) tp) / (tp + fp));
-		System.out.printf("%-15s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
-		System.out.printf("%-15s %-10s \n", "F1 SCORE: ", ((double) (2 * tp)) / (2*tp + fp + fn));
+		System.out.printf("%-25s %-10s \n", "SENSITIVITY: ", ((double) tp) / (tp + fn));
+		System.out.printf("%-25s %-10s \n", "PRECISION: ", ((double) tp) / (tp + fp));
+		System.out.printf("%-25s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
+		System.out.printf("%-25s %-10s \n", "BALANCED ACCURACY: ", ((double) (((double) tp) / (tp + fn) + ((double) tn) / (tn + fp))) / 2);
+		System.out.printf("%-25s %-10s \n", "F1 SCORE: ", ((double) (2 * tp)) / (2 * tp + fp + fn));
   	}
 }
