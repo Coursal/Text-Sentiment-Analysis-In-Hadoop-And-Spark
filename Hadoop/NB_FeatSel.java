@@ -23,13 +23,13 @@ import java.nio.charset.StandardCharsets;
 
 /*
 Execution Guide:
-hadoop com.sun.tools.javac.Main NB_TFIDF.java
-jar cf NB_TFIDF.jar NB_TFIDF*.class
-hadoop jar NB_TFIDF.jar NB_TFIDF
+hadoop com.sun.tools.javac.Main NB_FeatSel.java
+jar cf NB_FeatSel.jar NB_FeatSel*.class
+hadoop jar NB_FeatSel.jar NB_FeatSel
 hadoop fs -cat output/part-r-00000
 */
 
-public class NB_TFIDF
+public class NB_FeatSel
 {
     public static enum Global_Counters 
     {
@@ -41,10 +41,10 @@ public class NB_TFIDF
         POS_WORDS_SIZE,
         NEG_WORDS_SIZE,
         FEATURES_SIZE,
-        TRUE_POSITIVE_RATE,
-        FALSE_POSITIVE_RATE,
-        TRUE_NEGATIVE_RATE,
-        FALSE_NEGATIVE_RATE
+        TRUE_POSITIVE,
+        FALSE_POSITIVE,
+        TRUE_NEGATIVE,
+        FALSE_NEGATIVE
     }
 
 
@@ -84,7 +84,7 @@ public class NB_TFIDF
                 positive_tweets_id_list += tweet_id + "*";  // using the '*' character as a delimiter between tweet IDs
 
 
-            // clean the text of the tweet from links..
+            // clean the text of the tweet from links...
             tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
                                 .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
                                 .replaceAll("\\d+", "")         // numbers...
@@ -622,18 +622,18 @@ public class NB_TFIDF
             if(Double.compare(pos_probability, neg_probability) > 0)
             {
                 if(tweet_sentiment.equals("1"))
-                    context.getCounter(Global_Counters.TRUE_POSITIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.TRUE_POSITIVE).increment(1);
                 else
-                    context.getCounter(Global_Counters.FALSE_POSITIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.FALSE_POSITIVE).increment(1);
 
                 context.write(new Text(tweet_id + "@" + tweet_text), new Text("POSITIVE"));
             }
             else
             {
                 if(tweet_sentiment.equals("0"))
-                    context.getCounter(Global_Counters.TRUE_NEGATIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.TRUE_NEGATIVE).increment(1);
                 else
-                    context.getCounter(Global_Counters.FALSE_NEGATIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.FALSE_NEGATIVE).increment(1);
 
                 context.write(new Text(tweet_id + "@" + tweet_text), new Text("NEGATIVE"));
             }
@@ -680,7 +680,7 @@ public class NB_TFIDF
         long start_time = System.nanoTime();
 
         Job wordcount_job = Job.getInstance(conf, "Word Count");
-        wordcount_job.setJarByClass(NB_TFIDF.class);
+        wordcount_job.setJarByClass(NB_FeatSel.class);
         wordcount_job.setMapperClass(Map_WordCount.class);
         wordcount_job.setCombinerClass(Reduce_WordCount.class);
         wordcount_job.setReducerClass(Reduce_WordCount.class);
@@ -707,7 +707,7 @@ public class NB_TFIDF
 
 
         Job tf_job = Job.getInstance(conf, "TF");
-        tf_job.setJarByClass(NB_TFIDF.class);
+        tf_job.setJarByClass(NB_FeatSel.class);
         tf_job.setMapperClass(Map_TF.class);
         tf_job.setReducerClass(Reduce_TF.class);
         tf_job.setMapOutputKeyClass(Text.class);
@@ -719,7 +719,7 @@ public class NB_TFIDF
         tf_job.waitForCompletion(true);
 
         Job tfidf_job = Job.getInstance(conf, "TFIDF");
-        tfidf_job.setJarByClass(NB_TFIDF.class);
+        tfidf_job.setJarByClass(NB_FeatSel.class);
         tfidf_job.setMapperClass(Map_TFIDF.class);
         tfidf_job.setReducerClass(Reduce_TFIDF.class);
         tfidf_job.setMapOutputKeyClass(Text.class);
@@ -741,7 +741,7 @@ public class NB_TFIDF
 
 
         Job feature_selection_job = Job.getInstance(conf, "Feature Selection");
-        feature_selection_job.setJarByClass(NB_TFIDF.class);
+        feature_selection_job.setJarByClass(NB_FeatSel.class);
         feature_selection_job.setMapperClass(Map_FeatSel.class);
         feature_selection_job.setReducerClass(Reduce_FeatSel.class);
         feature_selection_job.setNumReduceTasks(1); 
@@ -754,7 +754,7 @@ public class NB_TFIDF
         feature_selection_job.waitForCompletion(true);
 
         Job training_1_job = Job.getInstance(conf, "Training Part 1");
-        training_1_job.setJarByClass(NB_TFIDF.class);
+        training_1_job.setJarByClass(NB_FeatSel.class);
         training_1_job.setMapperClass(Map_Training_1.class);
         training_1_job.setReducerClass(Reduce_Training_1.class);    
         training_1_job.setMapOutputKeyClass(Text.class);
@@ -777,7 +777,7 @@ public class NB_TFIDF
         conf.set("neg_words_size", String.valueOf(neg_words_size));
 
         Job training_2_job = Job.getInstance(conf, "Training Part 2");
-        training_2_job.setJarByClass(NB_TFIDF.class);
+        training_2_job.setJarByClass(NB_FeatSel.class);
         training_2_job.setMapperClass(Map_Training_2.class);
         training_2_job.setReducerClass(Reduce_Training_2.class);    
         training_2_job.setMapOutputKeyClass(Text.class);
@@ -792,7 +792,7 @@ public class NB_TFIDF
         conf.set("features_size", String.valueOf(features_size));
 
         Job testing_job = Job.getInstance(conf, "Testing");
-        testing_job.setJarByClass(NB_TFIDF.class);
+        testing_job.setJarByClass(NB_FeatSel.class);
         testing_job.setMapperClass(Map_Testing.class);  
         testing_job.setMapOutputKeyClass(Text.class);
         testing_job.setMapOutputValueClass(Text.class);
@@ -804,10 +804,10 @@ public class NB_TFIDF
 
         System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
 
-        int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE_RATE).getValue());
-        int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE_RATE).getValue());
-        int tn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_NEGATIVE_RATE).getValue());
-        int fn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_NEGATIVE_RATE).getValue());
+        int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE).getValue());
+        int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE).getValue());
+        int tn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_NEGATIVE).getValue());
+        int fn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_NEGATIVE).getValue());
 
         System.out.println("\nCONFUSION MATRIX:");
         System.out.printf("%-10s %-10s \n", tp, fp);

@@ -39,10 +39,10 @@ public class NB
         POS_WORDS_SIZE,
         NEG_WORDS_SIZE,
         FEATURES_SIZE,
-        TRUE_POSITIVE_RATE,
-        FALSE_POSITIVE_RATE,
-        TRUE_NEGATIVE_RATE,
-        FALSE_NEGATIVE_RATE
+        TRUE_POSITIVE,
+        FALSE_POSITIVE,
+        TRUE_NEGATIVE,
+        FALSE_NEGATIVE
     }
 
 
@@ -90,7 +90,7 @@ public class NB
             }
 
 
-            // clean the text of the tweet from links..
+            // clean the text of the tweet from links...
             tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
                                 .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
                                 .replaceAll("\\d+", "")         // numbers...
@@ -259,18 +259,18 @@ public class NB
             if(Double.compare(pos_probability, neg_probability) > 0)
             {
                 if(tweet_sentiment.equals("1"))
-                    context.getCounter(Global_Counters.TRUE_POSITIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.TRUE_POSITIVE).increment(1);
                 else
-                    context.getCounter(Global_Counters.FALSE_POSITIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.FALSE_POSITIVE).increment(1);
 
                 context.write(new Text(tweet_id + "@" + tweet_text), new Text("POSITIVE"));
             }
             else
             {
                 if(tweet_sentiment.equals("0"))
-                    context.getCounter(Global_Counters.TRUE_NEGATIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.TRUE_NEGATIVE).increment(1);
                 else
-                    context.getCounter(Global_Counters.FALSE_NEGATIVE_RATE).increment(1);
+                    context.getCounter(Global_Counters.FALSE_NEGATIVE).increment(1);
 
                 context.write(new Text(tweet_id + "@" + tweet_text), new Text("NEGATIVE"));
             }
@@ -335,10 +335,10 @@ public class NB
 
         System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
 
-        int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE_RATE).getValue());
-        int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE_RATE).getValue());
-        int tn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_NEGATIVE_RATE).getValue());
-        int fn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_NEGATIVE_RATE).getValue());
+        int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE).getValue());
+        int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE).getValue());
+        int tn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_NEGATIVE).getValue());
+        int fn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_NEGATIVE).getValue());
 
         System.out.println("\nCONFUSION MATRIX:");
         System.out.printf("%-10s %-10s \n", tp, fp);
