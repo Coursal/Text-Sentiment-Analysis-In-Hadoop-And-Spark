@@ -33,7 +33,7 @@ object NB_FeatSel
         val start_time = System.nanoTime();
 
 		// read the .csv file with the training data 
-		val train_input = sc.textFile("hdfs://localhost:9000/user/crsl/input/tweets.csv")
+		val train_input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_1/tweets.csv")
 						.map(line => line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)"))		// split each line to columns..
 						.map(column => 
 									{	// map the cleaned up tweet text as key and sentiment as value
@@ -64,7 +64,7 @@ object NB_FeatSel
     	val train_hashingTF = new HashingTF().setInputCol("words")setOutputCol("rawFeatures")	// calculate TF
       	val train_featurized_data = train_hashingTF.transform(train_words_data)
 
-	    val train_idf = new IDF().setInputCol("rawFeatures").setOutputCol("features")			// calculate IDF
+	    val train_idf = new IDF().setMinDocFreq(10).setInputCol("rawFeatures").setOutputCol("features")			// calculate IDF
 	    val train_idf_model = train_idf.fit(train_featurized_data)
 
 	    val train_rescaled_data = train_idf_model.transform(train_featurized_data)				// calculate TFIDF
@@ -75,62 +75,62 @@ object NB_FeatSel
 
 
 	    // select the top 20% (based on the Pareto principle) of the train features with the highest TFIDF scores 
-	    val feature_selector = new ChiSqSelector().setPercentile(0.2)
-											      .setFeaturesCol("features")
-											      .setLabelCol("label")
-											      .setOutputCol("selectedFeatures")
+	 //    val feature_selector = new ChiSqSelector().setPercentile(0.2)
+		// 									      .setFeaturesCol("features")
+		// 									      .setLabelCol("label")
+		// 									      .setOutputCol("selectedFeatures")
 
-		val selected_train_features = feature_selector.fit(train_rescaled_data).transform(train_rescaled_data)
-    	selected_train_features.show()
-
-
-
-
-
-	    // read the .csv file with the testing data 
-		val test_input = sc.textFile("hdfs://localhost:9000/user/crsl/test_data/test_data.csv")
-						.map(line => line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)"))		// split each line to columns..
-						.map(column => 
-									{	// map the cleaned up tweet text as key and sentiment as value
-										(
-				                            column(1).toDouble // set the sentiment of the tweet as key
-				                            ,
-				                            column(3) // set the cleaned up tweet text as value, by cleaning up the text from...
-												.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "") // links...
-				                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
-				                                .replaceAll("\\d+", "")         // numbers...
-				                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
-				                                .toLowerCase()                  // turn every character left to lowercase...
-				                                .trim()                         // trim the spaces before & after the whole string...
-				                                .replaceAll("\\s+", " ")        // and get rid of double spaces
-										)
-									}
-							)
-
-
-		// convert the RDD type sets to Dataframes with named columns in order to apply the TFIDF measure on them
-		val test_input_dataframe = test_input.toDF("label", "tweet")
-
-		// apply TFIDF to the tweet text to have the proper form of (double, Vectors(double[])) that is used at the Naive Bayes classifier 
-		val test_tokenizer = new Tokenizer().setInputCol("tweet").setOutputCol("words")			// split the text of each tweet to tokens
-    	val test_words_data = test_tokenizer.transform(test_input_dataframe)
-
-    	val test_hashingTF = new HashingTF().setInputCol("words").setOutputCol("rawFeatures")	// calculate TF
-      	val test_featurized_data = test_hashingTF.transform(test_words_data)
-
-	    val test_idf = new IDF().setInputCol("rawFeatures").setOutputCol("features")			// calculate IDF
-	    val test_idf_model = test_idf.fit(test_featurized_data)
-
-	    val test_rescaled_data = test_idf_model.transform(test_featurized_data)					// calculate TFIDF
-	    test_rescaled_data.select("label", "features").show()
+		// val selected_train_features = feature_selector.fit(train_rescaled_data).transform(train_rescaled_data)
+  //   	selected_train_features.show()
 
 
 
 
+
+	 //    // read the .csv file with the testing data 
+		// val test_input = sc.textFile("hdfs://localhost:9000/user/crsl/test1/tweets.csv")
+		// 				.map(line => line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)"))		// split each line to columns..
+		// 				.map(column => 
+		// 							{	// map the cleaned up tweet text as key and sentiment as value
+		// 								(
+		// 		                            column(1).toDouble // set the sentiment of the tweet as key
+		// 		                            ,
+		// 		                            column(3) // set the cleaned up tweet text as value, by cleaning up the text from...
+		// 										.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "") // links...
+		// 		                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
+		// 		                                .replaceAll("\\d+", "")         // numbers...
+		// 		                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
+		// 		                                .toLowerCase()                  // turn every character left to lowercase...
+		// 		                                .trim()                         // trim the spaces before & after the whole string...
+		// 		                                .replaceAll("\\s+", " ")        // and get rid of double spaces
+		// 								)
+		// 							}
+		// 					)
+
+
+		// // convert the RDD type sets to Dataframes with named columns in order to apply the TFIDF measure on them
+		// val test_input_dataframe = test_input.toDF("label", "tweet")
+
+		// // apply TFIDF to the tweet text to have the proper form of (double, Vectors(double[])) that is used at the Naive Bayes classifier 
+		// val test_tokenizer = new Tokenizer().setInputCol("tweet").setOutputCol("words")			// split the text of each tweet to tokens
+  //   	val test_words_data = test_tokenizer.transform(test_input_dataframe)
+
+  //   	val test_hashingTF = new HashingTF().setInputCol("words").setOutputCol("rawFeatures")	// calculate TF
+  //     	val test_featurized_data = test_hashingTF.transform(test_words_data)
+
+	 //    val test_idf = new IDF().setInputCol("rawFeatures").setOutputCol("features")			// calculate IDF
+	 //    val test_idf_model = test_idf.fit(test_featurized_data)
+
+	 //    val test_rescaled_data = test_idf_model.transform(test_featurized_data)					// calculate TFIDF
+	 //    test_rescaled_data.select("label", "features").show()
+
+
+
+		val Array(training_data, test_data) = train_rescaled_data.randomSplit(Array(0.8, 0.2), seed = 1234L)
 
 	    // create the Naive Bayes model, train it with the train data and classify/predict the test data 
-	    val model = new NaiveBayes().fit(selected_train_features)
-	    val predictions = model.transform(test_rescaled_data)
+	    val model = new NaiveBayes().fit(training_data)
+	    val predictions = model.transform(test_data)
 
 	    println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
 

@@ -645,14 +645,14 @@ public class NB_FeatSel
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were inbetween and final job outputs are stored
-        Path input_dir = new Path("input");
+        Path input_dir = new Path("train1");
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
         Path training_1_dir = new Path("training_1");
         Path training_2_dir = new Path("training_2");
-        Path testing_dir = new Path("test_data");
+        Path testing_dir = new Path("test1");
         Path output_dir = new Path("output");
 
         Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
