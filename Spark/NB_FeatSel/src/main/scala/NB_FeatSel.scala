@@ -10,8 +10,6 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.ml.feature.{HashingTF, IDF, Tokenizer}
 import org.apache.spark.ml.classification.NaiveBayes
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature.ChiSqSelector
-import org.apache.spark.ml.linalg.Vectors
 
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 
@@ -96,4 +94,3 @@ object NB_FeatSel
 		sc.stop()
 	}
 }
-

@@ -358,7 +358,6 @@ public class NB_FeatSel
 
             Set set = sorted_top_features.entrySet();
             Iterator it = set.iterator();
-
             while(it.hasNext())
             {
                 java.util.Map.Entry me = (java.util.Map.Entry) it.next();
@@ -645,14 +644,14 @@ public class NB_FeatSel
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were inbetween and final job outputs are stored
-        Path input_dir = new Path("train1");
+        Path input_dir = new Path("train3");
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
         Path training_1_dir = new Path("training_1");
         Path training_2_dir = new Path("training_2");
-        Path testing_dir = new Path("test1");
+        Path testing_dir = new Path("test3");
         Path output_dir = new Path("output");
 
         Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
@@ -732,10 +731,10 @@ public class NB_FeatSel
 
 
         // Calculating the total number of words that got vectorized in order to find out how many words/features to keep, just 
-        // so the model has to work only with the 20% of the most relevant of the features, based on the Pareto principle
+        // so the model has to work only with the 75% of the most relevant of the featuresiple
         int num_of_features = Math.toIntExact(tfidf_job.getCounters().findCounter(Global_Counters.NUM_OF_FEATURES).getValue());
         System.out.println("TOTAL NUMBER OF FEATURES: " + num_of_features);
-        int features_to_keep = (num_of_features * 20) / 100;
+        int features_to_keep = (num_of_features * 75) / 100;
         conf.set("features_to_keep", String.valueOf(features_to_keep));
         System.out.println("FEATURES TO KEEP: " + features_to_keep);
 

@@ -10,9 +10,6 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.ml.feature.{HashingTF, IDF, Tokenizer}
 import org.apache.spark.ml.classification.NaiveBayes
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature.ChiSqSelector
-import org.apache.spark.ml.linalg.Vectors
-import org.apache.spark.ml.feature.LabeledPoint
 
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 
@@ -58,6 +55,7 @@ object NB
 		import spark.implicits._
 		val input_dataframe = input.toDF("label", "tweet")
 
+
 		// apply TFIDF to the text of training data to have the proper form of (double, Vectors(double[])) used at the Naive Bayes classifier 
 		val tokenizer = new Tokenizer().setInputCol("tweet").setOutputCol("words")		// split the text of each tweet to tokens
     	val words_data = tokenizer.transform(input_dataframe)
@@ -70,7 +68,6 @@ object NB
 
 	    val input_rescaled_data = input_idf_model.transform(input_featurized_data)				// calculate TFIDF
 	    //input_rescaled_data.select("label", "features").show()
-
 
 	 	val Array(training_data, test_data) = input_rescaled_data.randomSplit(Array(0.8, 0.2), seed = 1234L)
 
@@ -97,4 +94,3 @@ object NB
 		sc.stop()	
 	}
 }
-
