@@ -23,13 +23,13 @@ import java.nio.charset.StandardCharsets;
 
 /*
 Execution Guide:
-hadoop com.sun.tools.javac.Main NB_FeatSel.java
-jar cf NB_FeatSel.jar NB_FeatSel*.class
-hadoop jar NB_FeatSel.jar NB_FeatSel
+hadoop com.sun.tools.javac.Main Improved_NB.java
+jar cf Improved_NB.jar Improved_NB*.class
+hadoop jar Improved_NB.jar Improved_NB
 hadoop fs -cat output/part-r-00000
 */
 
-public class NB_FeatSel
+public class Improved_NB
 {
     public static enum Global_Counters 
     {
@@ -644,14 +644,14 @@ public class NB_FeatSel
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were inbetween and final job outputs are stored
-        Path input_dir = new Path("train3");
+        Path input_dir = new Path("train1");
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
         Path training_1_dir = new Path("training_1");
         Path training_2_dir = new Path("training_2");
-        Path testing_dir = new Path("test3");
+        Path testing_dir = new Path("test1");
         Path output_dir = new Path("output");
 
         Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
@@ -679,7 +679,7 @@ public class NB_FeatSel
         long start_time = System.nanoTime();
 
         Job wordcount_job = Job.getInstance(conf, "Word Count");
-        wordcount_job.setJarByClass(NB_FeatSel.class);
+        wordcount_job.setJarByClass(Improved_NB.class);
         wordcount_job.setMapperClass(Map_WordCount.class);
         wordcount_job.setCombinerClass(Reduce_WordCount.class);
         wordcount_job.setReducerClass(Reduce_WordCount.class);
@@ -706,7 +706,7 @@ public class NB_FeatSel
 
 
         Job tf_job = Job.getInstance(conf, "TF");
-        tf_job.setJarByClass(NB_FeatSel.class);
+        tf_job.setJarByClass(Improved_NB.class);
         tf_job.setMapperClass(Map_TF.class);
         tf_job.setReducerClass(Reduce_TF.class);
         tf_job.setMapOutputKeyClass(Text.class);
@@ -718,7 +718,7 @@ public class NB_FeatSel
         tf_job.waitForCompletion(true);
 
         Job tfidf_job = Job.getInstance(conf, "TFIDF");
-        tfidf_job.setJarByClass(NB_FeatSel.class);
+        tfidf_job.setJarByClass(Improved_NB.class);
         tfidf_job.setMapperClass(Map_TFIDF.class);
         tfidf_job.setReducerClass(Reduce_TFIDF.class);
         tfidf_job.setMapOutputKeyClass(Text.class);
@@ -740,7 +740,7 @@ public class NB_FeatSel
 
 
         Job feature_selection_job = Job.getInstance(conf, "Feature Selection");
-        feature_selection_job.setJarByClass(NB_FeatSel.class);
+        feature_selection_job.setJarByClass(Improved_NB.class);
         feature_selection_job.setMapperClass(Map_FeatSel.class);
         feature_selection_job.setReducerClass(Reduce_FeatSel.class);
         feature_selection_job.setNumReduceTasks(1); 
@@ -753,7 +753,7 @@ public class NB_FeatSel
         feature_selection_job.waitForCompletion(true);
 
         Job training_1_job = Job.getInstance(conf, "Training Part 1");
-        training_1_job.setJarByClass(NB_FeatSel.class);
+        training_1_job.setJarByClass(Improved_NB.class);
         training_1_job.setMapperClass(Map_Training_1.class);
         training_1_job.setReducerClass(Reduce_Training_1.class);    
         training_1_job.setMapOutputKeyClass(Text.class);
@@ -776,7 +776,7 @@ public class NB_FeatSel
         conf.set("neg_words_size", String.valueOf(neg_words_size));
 
         Job training_2_job = Job.getInstance(conf, "Training Part 2");
-        training_2_job.setJarByClass(NB_FeatSel.class);
+        training_2_job.setJarByClass(Improved_NB.class);
         training_2_job.setMapperClass(Map_Training_2.class);
         training_2_job.setReducerClass(Reduce_Training_2.class);    
         training_2_job.setMapOutputKeyClass(Text.class);
@@ -791,7 +791,7 @@ public class NB_FeatSel
         conf.set("features_size", String.valueOf(features_size));
 
         Job testing_job = Job.getInstance(conf, "Testing");
-        testing_job.setJarByClass(NB_FeatSel.class);
+        testing_job.setJarByClass(Improved_NB.class);
         testing_job.setMapperClass(Map_Testing.class);  
         testing_job.setMapOutputKeyClass(Text.class);
         testing_job.setMapOutputValueClass(Text.class);

@@ -52,13 +52,9 @@ public class NB
      */
     public static class Map_Training extends Mapper<Object, Text, Text, Text> 
     {
-        private Text tweet_key = new Text();
-        private Text word_value = new Text();
-        
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
         {
             context.getCounter(Global_Counters.TWEETS_SIZE).increment(1);
-
 
             String line = value.toString();
             String[] columns = line.split(",");
@@ -71,9 +67,17 @@ public class NB
                     columns[3] += columns[i];
             }
 
-            String tweet_id = columns[0];
             String tweet_sentiment = columns[1];
             String tweet_text = columns[3];
+
+            // clean the text of the tweet from links...
+            tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
+                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
+                                .replaceAll("\\d+", "")         // numbers...
+                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
+                                .toLowerCase()                  // turn every character left to lowercase...
+                                .trim()                         // trim the spaces before & after the whole string...
+                                .replaceAll("\\s+", " ");       // and get rid of double spaces
 
             String sentiment_label = "POSITIVE";
 
@@ -88,16 +92,6 @@ public class NB
                 context.getCounter(Global_Counters.NEG_WORDS_SIZE).increment(tweet_text.split("\\s+").length);
                 sentiment_label = "NEGATIVE";
             }
-
-
-            // clean the text of the tweet from links...
-            tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
-                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
-                                .replaceAll("\\d+", "")         // numbers...
-                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
-                                .toLowerCase()                  // turn every character left to lowercase...
-                                .trim()                         // trim the spaces before & after the whole string...
-                                .replaceAll("\\s+", " ");       // and get rid of double spaces
 
 
             if(tweet_text != null && !tweet_text.trim().isEmpty())
@@ -248,8 +242,8 @@ public class NB
                     {
                         if(word.equals(entry.getKey()))
                         {
-                            pos_probability = ((double) pos_probability) * pos_words_probabilities.get(word);
-                            neg_probability = ((double) neg_probability) * neg_words_probabilities.get(word);
+                            pos_probability = ((double) pos_class_probability) * pos_words_probabilities.get(word);
+                            neg_probability = ((double) neg_class_probability) * neg_words_probabilities.get(word);
                         }
                     }
                 }

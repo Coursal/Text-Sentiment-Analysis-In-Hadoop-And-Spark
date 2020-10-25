@@ -8,30 +8,30 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 
 import org.apache.spark.ml.feature.{HashingTF, IDF, Tokenizer}
-import org.apache.spark.ml.classification.LinearSVC
-
+import org.apache.spark.ml.classification.NaiveBayes
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 
 /*
 Execution Guide:
 sbt package
-spark-submit --master local ./target/scala-2.12/svm_featsel_2.12-0.1.jar
+spark-submit --master local ./target/scala-2.12/improved_nb_2.12-0.1.jar
 */
 
-object SVM
+object Improved_NB
 {
 	def main(args: Array[String]): Unit = 
 	{
 		// create a scala spark context for rdd management and a spark session for dataframe management
-		val conf = new SparkConf().setAppName("Naive Bayes")
+		val conf = new SparkConf().setAppName("Naive Bayes with Feature Selection")
 		val sc = new SparkContext(conf)
-		val spark = SparkSession.builder.appName("Naive Bayes").master("local").getOrCreate()
+		val spark = SparkSession.builder.appName("Naive Bayes with Feature Selection").master("local").getOrCreate()
 
         val start_time = System.nanoTime()
 
 		// read the .csv file with the training data 
-		val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_5/tweets.csv")
+		val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_1/tweets.csv")
 						.map(line => line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)"))		// split each line to columns..
 						.map(column => 
 									{	// map the cleaned up tweet text as key and sentiment as value
@@ -55,7 +55,6 @@ object SVM
 		import spark.implicits._
 		val input_dataframe = input.toDF("label", "tweet")
 
-
 		// apply TFIDF to the text of training data to have the proper form of (double, Vectors(double[])) used at the Naive Bayes classifier 
 		val tokenizer = new Tokenizer().setInputCol("tweet").setOutputCol("words")		// split the text of each tweet to tokens
     	val words_data = tokenizer.transform(input_dataframe)
@@ -69,20 +68,20 @@ object SVM
 	    val input_rescaled_data = input_idf_model.transform(input_featurized_data)						// calculate TFIDF
 	    //input_rescaled_data.select("label", "features").show()
 
-	 	val Array(training_data, test_data) = input_rescaled_data.randomSplit(Array(0.8, 0.2), seed = 1234L)
 
-	 	// create the SVM model, train it with the train data and classify/predict the test data 
-	 	val lsvc = new LinearSVC().setMaxIter(10).setRegParam(0.1)
-	    val lsvc_model = lsvc.fit(training_data)
+		val Array(training_data, test_data) = input_rescaled_data.randomSplit(Array(0.8, 0.2), seed = 1234L)
 
-	    val predictions = lsvc_model.transform(test_data)
+	    // create the Naive Bayes model, train it with the train data and classify/predict the test data 
+	    val model = new NaiveBayes().fit(training_data)
+	    val predictions = model.transform(test_data)
 	    //predictions.show()	// select example rows of predictions to display
-	    val end_time = System.nanoTime()
+	    val end_time = System.nanoTime()    
+	    
 
 	    // select each (prediction, true label) set and compute the test error, convert them to RDD, and use the MulticlassMetrics class
 	    // to output the confussion matrix and some metrics
 	    val prediction_and_labels = predictions.select("prediction", "label").rdd.map(r => (r.getDouble(0), r.getDouble(1)))
-
+    
     	val metrics = new MulticlassMetrics(prediction_and_labels)
     	println(metrics.confusionMatrix)
     	println("ACCURACY: " + metrics.accuracy)
@@ -90,8 +89,8 @@ object SVM
     	println("PRECISION: " + metrics.weightedPrecision)
     	println("SENSITIVITY: " + metrics.weightedTruePositiveRate)
     	println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds");
-
+    	
 	    spark.stop()
-		sc.stop()	
+		sc.stop()
 	}
 }

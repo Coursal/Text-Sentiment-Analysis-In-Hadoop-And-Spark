@@ -1,4 +1,4 @@
-name := "NB_FeatSel"
+name := "Improved_SVM"
 
 version := "0.1"
 
