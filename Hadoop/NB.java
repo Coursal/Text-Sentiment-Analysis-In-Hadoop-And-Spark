@@ -227,9 +227,9 @@ public class NB
                                 .trim()                         // trim the spaces before & after the whole string...
                                 .replaceAll("\\s+", " ");       // and get rid of double spaces
 
-            // initialize the probabilities with the class probability of each sentiment
-            Double pos_probability = pos_class_probability;
-            Double neg_probability = neg_class_probability;
+            // initialize the product of positive and negative probabilities with 1
+            Double pos_probability = 1.0;
+            Double neg_probability = 1.0;
 
             // calculate the product of the probabilities of the words (+ the class probability) for each class
             if(tweet_text != null && !tweet_text.trim().isEmpty())
@@ -242,12 +242,16 @@ public class NB
                     {
                         if(word.equals(entry.getKey()))
                         {
-                            pos_probability = ((double) pos_class_probability) * pos_words_probabilities.get(word);
-                            neg_probability = ((double) neg_class_probability) * neg_words_probabilities.get(word);
+                            pos_probability *= pos_words_probabilities.get(word);
+                            neg_probability *= neg_words_probabilities.get(word);
                         }
                     }
                 }
             }
+
+            // multiply the product of positive and negative probability with the class probability of each sentiment
+            pos_probability *= pos_class_probability;
+            neg_probability *= neg_class_probability;
 
             // compare and set the max value of the two class probabilities as the result of the guessed sentiment for every tweet
             if(Double.compare(pos_probability, neg_probability) > 0)
