@@ -371,7 +371,7 @@ public class Improved_NB
     /* input:  <TFIDF, tweet@word>
      * output: <tweet, word>
      */
-    public static class Map_Training_1 extends Mapper<Object, Text, Text, Text> 
+    public static class Map_RebuildDocs extends Mapper<Object, Text, Text, Text> 
     {
         private Text tweet_key = new Text();
         private Text word_value = new Text();
@@ -391,7 +391,7 @@ public class Improved_NB
     /* input:  <tweet, word>
      * output: <tweet, (tweet_text#sentiment)>
      */
-    public static class Reduce_Training_1 extends Reducer<Text, Text, Text, Text> 
+    public static class Reduce_RebuildDocs extends Reducer<Text, Text, Text, Text> 
     {
         private String positive_tweets_IDs;
         private String[] positive_tweets_IDs_arr;
@@ -451,7 +451,7 @@ public class Improved_NB
     /* input:  <tweet, (tweet_text#sentiment)>
      * output: <word, sentiment>
      */
-    public static class Map_Training_2 extends Mapper<Object, Text, Text, Text> 
+    public static class Map_Training extends Mapper<Object, Text, Text, Text> 
     {
         private Text word_key = new Text();
         private Text sentiment_value = new Text();
@@ -475,7 +475,7 @@ public class Improved_NB
     /* input:  <word, sentiment>
      * output: <word, pos_wordcount@neg_wordcount>
      */
-    public static class Reduce_Training_2 extends Reducer<Text, Text, Text, Text> 
+    public static class Reduce_Training extends Reducer<Text, Text, Text, Text> 
     {
         public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
         {
@@ -648,14 +648,14 @@ public class Improved_NB
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were inbetween and final job outputs are stored
-        Path input_dir = new Path("train3");
+        Path input_dir = new Path("train1");
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
-        Path training_1_dir = new Path("training_1");
-        Path training_2_dir = new Path("training_2");
-        Path testing_dir = new Path("test3");
+        Path rebuiltdocs_dir = new Path("rebuiltdocs");
+        Path training_dir = new Path("training");
+        Path testing_dir = new Path("test1");
         Path output_dir = new Path("output");
 
         Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
@@ -671,10 +671,10 @@ public class Improved_NB
             fs.delete(tfidf_dir, true);
         if(fs.exists(features_dir))
             fs.delete(features_dir, true);
-        if(fs.exists(training_1_dir))
-            fs.delete(training_1_dir, true);
-        if(fs.exists(training_2_dir))
-            fs.delete(training_2_dir, true);
+        if(fs.exists(rebuiltdocs_dir))
+            fs.delete(rebuiltdocs_dir, true);
+        if(fs.exists(training_dir))
+            fs.delete(training_dir, true);
         if(fs.exists(output_dir))
             fs.delete(output_dir, true);
         if(fs.exists(positive_tweets_id_list))
@@ -756,42 +756,42 @@ public class Improved_NB
         FileOutputFormat.setOutputPath(feature_selection_job, features_dir);
         feature_selection_job.waitForCompletion(true);
 
-        Job training_1_job = Job.getInstance(conf, "Training Part 1");
-        training_1_job.setJarByClass(Improved_NB.class);
-        training_1_job.setMapperClass(Map_Training_1.class);
-        training_1_job.setReducerClass(Reduce_Training_1.class);    
-        training_1_job.setMapOutputKeyClass(Text.class);
-        training_1_job.setMapOutputValueClass(Text.class);
-        training_1_job.setOutputKeyClass(Text.class);
-        training_1_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(training_1_job, features_dir);
-        FileOutputFormat.setOutputPath(training_1_job, training_1_dir);
-        training_1_job.waitForCompletion(true);
+        Job rebuilddocs_job = Job.getInstance(conf, "Rebuilding Documents");
+        rebuilddocs_job.setJarByClass(Improved_NB.class);
+        rebuilddocs_job.setMapperClass(Map_RebuildDocs.class);
+        rebuilddocs_job.setReducerClass(Reduce_RebuildDocs.class);    
+        rebuilddocs_job.setMapOutputKeyClass(Text.class);
+        rebuilddocs_job.setMapOutputValueClass(Text.class);
+        rebuilddocs_job.setOutputKeyClass(Text.class);
+        rebuilddocs_job.setOutputValueClass(Text.class);
+        FileInputFormat.addInputPath(rebuilddocs_job, features_dir);
+        FileOutputFormat.setOutputPath(rebuilddocs_job, rebuiltdocs_dir);
+        rebuilddocs_job.waitForCompletion(true);
 
-        int tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
+        int tweets_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
         conf.set("tweets_size", String.valueOf(tweets_size));
-        int pos_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
+        int pos_tweets_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
         conf.set("pos_tweets_size", String.valueOf(pos_tweets_size));
-        int neg_tweets_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
+        int neg_tweets_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
         conf.set("neg_tweets_size", String.valueOf(neg_tweets_size));
-        int pos_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
+        int pos_words_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
         conf.set("pos_words_size", String.valueOf(pos_words_size));
-        int neg_words_size = Math.toIntExact(training_1_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
+        int neg_words_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
         conf.set("neg_words_size", String.valueOf(neg_words_size));
 
-        Job training_2_job = Job.getInstance(conf, "Training Part 2");
-        training_2_job.setJarByClass(Improved_NB.class);
-        training_2_job.setMapperClass(Map_Training_2.class);
-        training_2_job.setReducerClass(Reduce_Training_2.class);    
-        training_2_job.setMapOutputKeyClass(Text.class);
-        training_2_job.setMapOutputValueClass(Text.class);
-        training_2_job.setOutputKeyClass(Text.class);
-        training_2_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(training_2_job, training_1_dir);
-        FileOutputFormat.setOutputPath(training_2_job, training_2_dir);
-        training_2_job.waitForCompletion(true);
+        Job training_job = Job.getInstance(conf, "Training");
+        training_job.setJarByClass(Improved_NB.class);
+        training_job.setMapperClass(Map_Training.class);
+        training_job.setReducerClass(Reduce_Training.class);    
+        training_job.setMapOutputKeyClass(Text.class);
+        training_job.setMapOutputValueClass(Text.class);
+        training_job.setOutputKeyClass(Text.class);
+        training_job.setOutputValueClass(Text.class);
+        FileInputFormat.addInputPath(training_job, rebuiltdocs_dir);
+        FileOutputFormat.setOutputPath(training_job, training_dir);
+        training_job.waitForCompletion(true);
 
-        int features_size = Math.toIntExact(training_2_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
+        int features_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
         conf.set("features_size", String.valueOf(features_size));
 
         Job testing_job = Job.getInstance(conf, "Testing");
