@@ -24,14 +24,14 @@ object SVM
 	def main(args: Array[String]): Unit = 
 	{
 		// create a scala spark context for rdd management and a spark session for dataframe management
-		val conf = new SparkConf().setAppName("Naive Bayes")
+		val conf = new SparkConf().setAppName("Support Vector Machines")
 		val sc = new SparkContext(conf)
-		val spark = SparkSession.builder.appName("Naive Bayes").master("local").getOrCreate()
+		val spark = SparkSession.builder.appName("Support Vector Machines").master("local").getOrCreate()
 
         val start_time = System.nanoTime()
 
 		// read the .csv file with the training data 
-		val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_5/tweets.csv")
+		val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_1/tweets.csv")
 						.map(line => line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)"))		// split each line to columns..
 						.map(column => 
 									{	// map the cleaned up tweet text as key and sentiment as value
@@ -39,13 +39,13 @@ object SVM
 				                            column(1).toDouble // set the sentiment of the tweet as key
 				                            ,
 				                            column(3) // set the cleaned up tweet text as value, by cleaning up the text from...
-												.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "") // links...
-				                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
-				                                .replaceAll("\\d+", "")         // numbers...
-				                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
-				                                .toLowerCase()                  // turn every character left to lowercase...
-				                                .trim()                         // trim the spaces before & after the whole string...
-				                                .replaceAll("\\s+", " ")        // and get rid of double spaces
+				                                .replaceAll("(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})", "")
+				                                .replaceAll("(#|@|&).*?\\w+", "")   // mentions, hashtags, special characters...
+				                                .replaceAll("\\d+", "")             // numbers...
+				                                .replaceAll("[^a-zA-Z ]", " ")      // punctuation...
+				                                .toLowerCase()                      // turn every character left to lowercase...
+				                                .trim()                             // trim the spaces before & after the whole string...
+				                                .replaceAll("\\s+", " ")            // and get rid of double spaces
 										)
 									}
 							)
@@ -75,7 +75,7 @@ object SVM
 	 	val lsvc = new LinearSVC().setMaxIter(10).setRegParam(0.1)
 	    val lsvc_model = lsvc.fit(training_data)
 
-	    val predictions = lsvcModel.transform(test_data)
+	    val predictions = lsvc_model.transform(test_data)
 	    //predictions.show()	// select example rows of predictions to display
 	    val end_time = System.nanoTime()
 

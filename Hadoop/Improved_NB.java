@@ -34,7 +34,6 @@ public class Improved_NB
     public static enum Global_Counters 
     {
         NUM_OF_TWEETS, 
-        NUM_OF_FEATURES,
         TWEETS_SIZE,
         POS_TWEETS_SIZE,
         NEG_TWEETS_SIZE,
@@ -85,13 +84,13 @@ public class Improved_NB
 
 
             // clean the text of the tweet from links...
-            tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
-                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
-                                .replaceAll("\\d+", "")         // numbers...
-                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
-                                .toLowerCase()                  // turn every character left to lowercase...
-                                .trim()                         // trim the spaces before & after the whole string...
-                                .replaceAll("\\s+", " ");       // and get rid of double spaces
+            tweet_text = tweet_text.replaceAll("(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})", "")
+                                .replaceAll("(#|@|&).*?\\w+", "")   // mentions, hashtags, special characters...
+                                .replaceAll("\\d+", "")             // numbers...
+                                .replaceAll("[^a-zA-Z ]", " ")      // punctuation...
+                                .toLowerCase()                      // turn every character left to lowercase...
+                                .trim()                             // trim the spaces before & after the whole string...
+                                .replaceAll("\\s+", " ");           // and get rid of double spaces
 
 
             if(tweet_text != null && !tweet_text.trim().isEmpty())
@@ -250,10 +249,10 @@ public class Improved_NB
                 
                 tfidf = (Double.parseDouble(divide_data[0])/Double.parseDouble(divide_data[1])) * Math.log(num_of_tweets/num_of_tweets_with_this_word);
                 
-                context.write(new Text(value_arr[0] + "@" + key.toString()), new Text(tfidf.toString()));
+                // context.getCounter(Global_Counters.NUM_OF_FEATURES).increment(1);
 
-                context.getCounter(Global_Counters.NUM_OF_FEATURES).increment(1);
-            }           
+                context.write(new Text(value_arr[0] + "@" + key.toString()), new Text(tfidf.toString()));
+            }         
         }
     }
 
@@ -264,74 +263,34 @@ public class Improved_NB
      */
     public static class Map_FeatSel extends Mapper<Object, Text, NullWritable, Text>
     {
-        private int features_to_keep;
         private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
 
-        protected void setup(Context context) throws IOException, InterruptedException 
-        {
-            features_to_keep = Integer.parseInt(context.getConfiguration().get("features_to_keep"));
-        }
-                
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException
         {
             String[] columns = value.toString().split("\t");
-            
-            top_features.put(new Text(columns[0]), Double.parseDouble(columns[1])); 
 
-            // sort the words by their TFIDF score
-            List list = new LinkedList(top_features.entrySet());
-            Collections.sort(list, new Comparator()
-                                    {
-                                        public int compare(Object o1, Object o2) 
-                                        {
-                                            return ((Comparable) ((java.util.Map.Entry) (o1))
-                                                    .getValue()).compareTo(((java.util.Map.Entry) (o2))
-                                                    .getValue());
-                                        }
-                                    });
-
-
-            HashMap sorted_top_features = new LinkedHashMap();
-            for(Iterator i = list.iterator(); i.hasNext();)
-            {
-                java.util.Map.Entry entry = (java.util.Map.Entry) i.next();
-                sorted_top_features.put(entry.getKey(), entry.getValue());
-            }
-
-            // hold the words with the biggest TFIDF score
-            while(sorted_top_features.size() > features_to_keep)
-                sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
-
-            Set set = sorted_top_features.entrySet();
-            Iterator it = set.iterator();
-            while(it.hasNext())
-            {
-                java.util.Map.Entry me = (java.util.Map.Entry) it.next();
-                context.write(NullWritable.get(), new Text(me.getKey().toString() + "_" + String.valueOf(me.getValue())));
-            }
+            context.write(NullWritable.get(), new Text(columns[0] + "_" + columns[1]));
         }
     }
 
     /* input:  <NULL, tweet@word_TFIDF>
-     * output: <TFIDF, tweet@word>
+     * output: <tweet@word, TFIDF>
      */
     public static class Reduce_FeatSel extends Reducer<NullWritable, Text, Text, Text>
     {
-        private int features_to_keep;
         private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
 
-        protected void setup(Context context) throws IOException, InterruptedException 
-        {
-            features_to_keep = Integer.parseInt(context.getConfiguration().get("features_to_keep"));
-        }
+        private int feature_cnt = 0;
         
         public void reduce(NullWritable key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
         {
             for(Text value : values) 
-            {       
+            {
                 String[] columns = value.toString().split("_");
-                top_features.put(new Text(columns[0]), Double.parseDouble(columns[1]));     
-            } 
+                top_features.put(new Text(columns[0]), Double.parseDouble(columns[1])); 
+
+                feature_cnt++;    
+            }
 
             // sort the words by their TFIDF score
             List list = new LinkedList(top_features.entrySet());
@@ -339,9 +298,8 @@ public class Improved_NB
                                     {
                                         public int compare(Object o1, Object o2) 
                                         {
-                                            return ((Comparable) ((java.util.Map.Entry) (o1))
-                                                    .getValue()).compareTo(((java.util.Map.Entry) (o2))
-                                                    .getValue());
+                                            return ((Comparable) ((java.util.Map.Entry) (o1)).getValue())
+                                                    .compareTo(((java.util.Map.Entry) (o2)).getValue());
                                         }
                                     });
 
@@ -352,8 +310,9 @@ public class Improved_NB
                 sorted_top_features.put(entry.getKey(), entry.getValue());
             }
 
-            // hold the words with the biggest TFIDF score
-            while(sorted_top_features.size() > features_to_keep)
+            // hold the words with the biggest TFIDF score, by trimming down the ones with the lowest score until the 75% of the
+            // words remained in the list
+            while(sorted_top_features.size() > ((feature_cnt * 75) / 100))
                 sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
 
             Set set = sorted_top_features.entrySet();
@@ -361,14 +320,14 @@ public class Improved_NB
             while(it.hasNext())
             {
                 java.util.Map.Entry me = (java.util.Map.Entry) it.next();
-                context.write(new Text(String.valueOf(me.getValue())), new Text(me.getKey().toString()));
+                context.write(new Text(me.getKey().toString()), new Text(String.valueOf(me.getValue())));
             }
         }
     }
 
 
 
-    /* input:  <TFIDF, tweet@word>
+    /* output: <tweet@word, TFIDF>
      * output: <tweet, word>
      */
     public static class Map_RebuildDocs extends Mapper<Object, Text, Text, Text> 
@@ -379,12 +338,9 @@ public class Improved_NB
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
         {
             String line[] = value.toString().split("\t");
-            String splitted_value[] = line[1].toString().split("@");
+            String splitted_key[] = line[0].toString().split("@");
 
-            tweet_key.set(splitted_value[0]);
-            word_value.set(splitted_value[1]);
-
-            context.write(tweet_key, word_value);      
+            context.write(new Text(splitted_key[0]), new Text(splitted_key[1]));      
         }
     }
 
@@ -535,7 +491,7 @@ public class Improved_NB
 
             // load the model of the last training job and fill two hashmaps of words with the number of
             // occurences in positive and negative tweets
-            Path training_model = new Path("training_2");
+            Path training_model = new Path("training");
             FileSystem model_fs = training_model.getFileSystem(context.getConfiguration());
             FileStatus[] file_status = model_fs.listStatus(training_model);
 
@@ -587,13 +543,13 @@ public class Improved_NB
             String tweet_text = columns[3];
 
             // clean the text of the tweet from links..
-            tweet_text = tweet_text.replaceAll("(http|https)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z]{2,3}(\\/\\S*)?", "")
-                                .replaceAll("#|@|&.*?\\s", "")  // mentions, hashtags, special characters...
-                                .replaceAll("\\d+", "")         // numbers...
-                                .replaceAll("[^a-zA-Z ]", "")   // punctuation...
-                                .toLowerCase()                  // turn every character left to lowercase...
-                                .trim()                         // trim the spaces before & after the whole string...
-                                .replaceAll("\\s+", " ");       // and get rid of double spaces
+            tweet_text = tweet_text.replaceAll("(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})", "")
+                                .replaceAll("(#|@|&).*?\\w+", "")   // mentions, hashtags, special characters...
+                                .replaceAll("\\d+", "")             // numbers...
+                                .replaceAll("[^a-zA-Z ]", " ")      // punctuation...
+                                .toLowerCase()                      // turn every character left to lowercase...
+                                .trim()                             // trim the spaces before & after the whole string...
+                                .replaceAll("\\s+", " ");           // and get rid of double spaces
 
             // initialize the product of positive and negative probabilities with 1
             Double pos_probability = 1.0;
@@ -647,7 +603,7 @@ public class Improved_NB
 
     public static void main(String[] args) throws Exception 
     {
-        // paths to directories were inbetween and final job outputs are stored
+        // paths to directories were input, inbetween and final job outputs are stored
         Path input_dir = new Path("train1");
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
@@ -733,21 +689,10 @@ public class Improved_NB
         FileOutputFormat.setOutputPath(tfidf_job, tfidf_dir);
         tfidf_job.waitForCompletion(true);
 
-
-        // Calculating the total number of words that got vectorized in order to find out how many words/features to keep, just 
-        // so the model has to work only with the 75% of the most relevant of the features
-        int num_of_features = Math.toIntExact(tfidf_job.getCounters().findCounter(Global_Counters.NUM_OF_FEATURES).getValue());
-        System.out.println("TOTAL NUMBER OF FEATURES: " + num_of_features);
-        int features_to_keep = (num_of_features * 75) / 100;
-        conf.set("features_to_keep", String.valueOf(features_to_keep));
-        System.out.println("FEATURES TO KEEP: " + features_to_keep);
-
-
         Job feature_selection_job = Job.getInstance(conf, "Feature Selection");
         feature_selection_job.setJarByClass(Improved_NB.class);
         feature_selection_job.setMapperClass(Map_FeatSel.class);
         feature_selection_job.setReducerClass(Reduce_FeatSel.class);
-        feature_selection_job.setNumReduceTasks(1); 
         feature_selection_job.setMapOutputKeyClass(NullWritable.class);
         feature_selection_job.setMapOutputValueClass(Text.class);
         feature_selection_job.setOutputKeyClass(Text.class);
