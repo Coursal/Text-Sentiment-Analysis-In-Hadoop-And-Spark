@@ -249,8 +249,6 @@ public class Improved_NB
                 
                 tfidf = (Double.parseDouble(divide_data[0])/Double.parseDouble(divide_data[1])) * Math.log(num_of_tweets/num_of_tweets_with_this_word);
                 
-                // context.getCounter(Global_Counters.NUM_OF_FEATURES).increment(1);
-
                 context.write(new Text(value_arr[0] + "@" + key.toString()), new Text(tfidf.toString()));
             }         
         }
@@ -364,7 +362,7 @@ public class Improved_NB
 
             context.getCounter(Global_Counters.TWEETS_SIZE).increment(1);
 
-            String word_list = "";
+            String doc_text = "";
 
             boolean flag = false;
             String sentiment = "NEGATIVE";
@@ -389,7 +387,7 @@ public class Improved_NB
                 String word = value.toString();
 
 
-                word_list += word + " ";
+                doc_text += word + " ";
 
                 if(sentiment.equals("POSITIVE"))
                     context.getCounter(Global_Counters.POS_WORDS_SIZE).increment(1);
@@ -398,7 +396,7 @@ public class Improved_NB
             } 
             
             
-            context.write(key, new Text(word_list + "#" + sentiment));
+            context.write(key, new Text(doc_text + "#" + sentiment));
         }
     }
 
@@ -414,8 +412,8 @@ public class Improved_NB
         
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
         {
-            String[] lines = value.toString().split("\t");
-            String[] splitted_value = lines[1].toString().split("#");
+            String[] line = value.toString().split("\t");
+            String[] splitted_value = line[1].toString().split("#");
             String[] tweet_words = splitted_value[0].split(" ");
 
             for(String word : tweet_words)
@@ -604,14 +602,14 @@ public class Improved_NB
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were input, inbetween and final job outputs are stored
-        Path input_dir = new Path("train1");
+        Path input_dir = new Path("train6");
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
         Path rebuiltdocs_dir = new Path("rebuiltdocs");
         Path training_dir = new Path("training");
-        Path testing_dir = new Path("test1");
+        Path testing_dir = new Path("test6");
         Path output_dir = new Path("output");
 
         Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment

@@ -21,6 +21,23 @@ spark-submit --master local ./target/scala-2.12/nb_2.12-0.1.jar
 
 object NB
 {
+    // function that splits each line of the .csv file by commas, while being cautious at the
+    // commas that might exist inside the last quoted column of the line with the tweet text
+    def split_csv(line:String) : Array[String] = 
+    {
+        var columns = line.split(",");
+
+        // if the columns are more than 4, that means the text of the post had commas inside,  
+        // so stitch the last columns together to form the full text of the tweet
+        if(columns.length > 4)
+        {
+            for(i <- 4 to (columns.length-1))
+                columns(3) += columns(i);
+        }
+
+        return columns
+    }
+
     def main(args: Array[String]): Unit = 
     {
         // create a scala spark context for rdd management and a spark session for dataframe management
@@ -32,7 +49,7 @@ object NB
 
         // read the .csv file with the training data 
         val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_1/tweets.csv")
-                        .map(line => line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)"))     // split each line to columns..
+                        .map(line => split_csv(line))     // split each line to columns...
                         .map(column => 
                                     {   // map the cleaned up tweet text as key and sentiment as value
                                         (

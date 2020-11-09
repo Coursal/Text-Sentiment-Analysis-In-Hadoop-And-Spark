@@ -280,9 +280,9 @@ public class NB
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were input, inbetween and final job outputs are stored
-        Path input_dir = new Path("train5");
+        Path input_dir = new Path("train1");
         Path training_dir = new Path("training");
-        Path testing_dir = new Path("test5");
+        Path testing_dir = new Path("test1");
         Path output_dir = new Path("output");
 
         Configuration conf = new Configuration();
