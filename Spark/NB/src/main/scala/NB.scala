@@ -31,7 +31,7 @@ object NB
         // so stitch the last columns together to form the full text of the tweet
         if(columns.length > 4)
         {
-            for(i <- 4 to (columns.length-1))
+            for(i <- 4 until columns.length)
                 columns(3) += columns(i);
         }
 
@@ -86,7 +86,7 @@ object NB
         val input_rescaled_data = input_idf_model.transform(input_featurized_data)              // calculate TFIDF
         //input_rescaled_data.select("label", "features").show()
 
-        val Array(training_data, test_data) = input_rescaled_data.randomSplit(Array(0.8, 0.2), seed = 1234L)
+        val Array(training_data, test_data) = input_rescaled_data.randomSplit(Array(0.75, 0.25), seed = 1234L)
 
         // create the Naive Bayes model, train it with the train data and classify/predict the test data 
         val model = new NaiveBayes().fit(training_data)
