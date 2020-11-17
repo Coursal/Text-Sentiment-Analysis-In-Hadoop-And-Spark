@@ -16,7 +16,7 @@ import org.apache.spark.mllib.evaluation.MulticlassMetrics
 /*
 Execution Guide:
 sbt package
-spark-submit --master local ./target/scala-2.12/improved_nb_2.12-0.1.jar
+spark-submit --master local ./target/scala-2.12/improved_nb_2.12-0.1.jar spark_input_#
 */
 
 object Improved_NB
@@ -48,7 +48,7 @@ object Improved_NB
         val start_time = System.nanoTime()
 
         // read the .csv file with the training data 
-        val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_1/tweets.csv")
+        val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_" + args(0) + "/tweets.csv")
                         .map(line => split_csv(line))     // split each line to columns...
                         .map(column => 
                                     {   // map the cleaned up tweet text as key and sentiment as value

@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 Execution Guide:
 hadoop com.sun.tools.javac.Main Improved_NB.java
 jar cf Improved_NB.jar Improved_NB*.class
-hadoop jar Improved_NB.jar Improved_NB
+hadoop jar Improved_NB.jar Improved_NB train_dir test_dir
 hadoop fs -cat output/part-r-00000
 */
 
@@ -602,14 +602,14 @@ public class Improved_NB
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were input, inbetween and final job outputs are stored
-        Path input_dir = new Path("train6");
+        Path input_dir = new Path(args[0]);
         Path wordcount_dir = new Path("wordcount");
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
         Path rebuiltdocs_dir = new Path("rebuiltdocs");
         Path training_dir = new Path("training");
-        Path testing_dir = new Path("test6");
+        Path testing_dir = new Path(args[1]);
         Path output_dir = new Path("output");
 
         Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment

@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 Execution Guide:
 hadoop com.sun.tools.javac.Main NB.java
 jar cf NB.jar NB*.class
-hadoop jar NB.jar NB
+hadoop jar NB.jar NB train_dir test_dir
 hadoop fs -cat output/part-r-00000
 */
 
@@ -280,9 +280,9 @@ public class NB
     public static void main(String[] args) throws Exception 
     {
         // paths to directories were input, inbetween and final job outputs are stored
-        Path input_dir = new Path("train1");
+        Path input_dir = new Path(args[0]);
         Path training_dir = new Path("training");
-        Path testing_dir = new Path("test1");
+        Path testing_dir = new Path(args[1]);
         Path output_dir = new Path("output");
 
         Configuration conf = new Configuration();
