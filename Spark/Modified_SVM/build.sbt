@@ -1,4 +1,4 @@
-name := "Improved_NB"
+name := "Modified_SVM"
 
 version := "0.1"
 

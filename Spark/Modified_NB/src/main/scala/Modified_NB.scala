@@ -13,13 +13,8 @@ import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 
-/*
-Execution Guide:
-sbt package
-spark-submit --master local ./target/scala-2.12/improved_nb_2.12-0.1.jar spark_input_#
-*/
 
-object Improved_NB
+object Modified_NB
 {
     // function that splits each line of the .csv file by commas, while being cautious at the
     // commas that might exist inside the last quoted column of the line with the tweet text
@@ -41,14 +36,13 @@ object Improved_NB
     def main(args: Array[String]): Unit = 
     {
         // create a scala spark context for rdd management and a spark session for dataframe management
-        val conf = new SparkConf().setAppName("Improved Naive Bayes")
+        val conf = new SparkConf().setAppName("Modified Naive Bayes")
         val sc = new SparkContext(conf)
-        val spark = SparkSession.builder.appName("Improved Naive Bayes").master("local").getOrCreate()
 
         val start_time = System.nanoTime()
 
         // read the .csv file with the training data 
-        val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_" + args(0) + "/tweets.csv")
+        val input = sc.textFile("hdfs://mpi6:19000/user/mpi/spark_input_" + args(0) + "/tweets.csv", 12)
                         .map(line => split_csv(line))     // split each line to columns...
                         .map(column => 
                                     {   // map the cleaned up tweet text as key and sentiment as value
@@ -90,10 +84,8 @@ object Improved_NB
         // create the Naive Bayes model, train it with the train data and classify/predict the test data 
         val model = new NaiveBayes().fit(training_data)
         val predictions = model.transform(test_data)
-        //predictions.show()    // select example rows of predictions to display
         val end_time = System.nanoTime()    
         
-
         // select each (prediction, true label) set and compute the test error, convert them to RDD, and use the MulticlassMetrics class
         // to output the confussion matrix and some metrics
         val prediction_and_labels = predictions.select("prediction", "label").rdd.map(r => (r.getDouble(0), r.getDouble(1)))
@@ -106,7 +98,6 @@ object Improved_NB
         println("SENSITIVITY: " + metrics.weightedTruePositiveRate)
         println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds");
         
-        spark.stop()
         sc.stop()
     }
 }
