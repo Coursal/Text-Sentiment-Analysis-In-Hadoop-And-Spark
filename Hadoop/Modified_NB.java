@@ -8,7 +8,9 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
@@ -23,13 +25,13 @@ import java.nio.charset.StandardCharsets;
 
 /*
 Execution Guide:
-hadoop com.sun.tools.javac.Main Improved_NB.java
-jar cf Improved_NB.jar Improved_NB*.class
-hadoop jar Improved_NB.jar Improved_NB train_dir test_dir
+hadoop com.sun.tools.javac.Main Modified_NB.java
+jar cf Modified_NB.jar Modified_NB*.class
+hadoop jar Modified_NB.jar Modified_NB train_dir test_dir
 hadoop fs -cat output/part-r-00000
 */
 
-public class Improved_NB
+public class Modified_NB
 {
     public static enum Global_Counters 
     {
@@ -56,10 +58,6 @@ public class Improved_NB
         private Text word_tweet_key = new Text();
         private final static IntWritable one = new IntWritable(1);
 
-        // string that will hold every tweet IDs with positive sentiment in order to determine the tweets with positive
-        // and negative sentiment after the feature selection
-        String positive_tweets_id_list = "";    
-        
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
         {
             context.getCounter(Global_Counters.NUM_OF_TWEETS).increment(1);
@@ -80,8 +78,7 @@ public class Improved_NB
             String tweet_text = columns[3];
 
             if(tweet_sentiment.equals("1"))
-                positive_tweets_id_list += tweet_id + "*";  // using the '*' character as a delimiter between tweet IDs
-
+                tweet_id += '+';
 
             // clean the text of the tweet from links...
             tweet_text = tweet_text.replaceAll("(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})", "")
@@ -104,16 +101,6 @@ public class Improved_NB
                     context.write(word_tweet_key, one);
                 }
             }
-        }
-
-        protected void cleanup(Context context) throws IOException, InterruptedException 
-        {
-            // create a file in the HDFS to store the tweet IDs with positive sentiment
-            FileSystem fs = FileSystem.get(context.getConfiguration());
-            Path path = new Path("positive_tweets_id_list");
-            FSDataOutputStream os = fs.create(path);
-            os.write(positive_tweets_id_list.getBytes(StandardCharsets.UTF_8));
-            os.close();
         }
     }
 
@@ -257,41 +244,45 @@ public class Improved_NB
 
 
     /* input:  <(tweet@word), TFIDF>
-     * output: <NULL, (tweet@word_TFIDF)>
+     * output: <tweet, (word_TFIDF)>
      */
-    public static class Map_FeatSel extends Mapper<Object, Text, NullWritable, Text>
+    public static class Map_FeatSel extends Mapper<Object, Text, Text, Text>
     {
-        private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
-
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException
         {
             String[] columns = value.toString().split("\t");
 
-            context.write(NullWritable.get(), new Text(columns[0] + "_" + columns[1]));
+            String[] splitted_key = columns[0].toString().split("@");
+
+            context.write(new Text(splitted_key[0]), new Text(splitted_key[1] + "_" + columns[1]));
         }
     }
 
-    /* input:  <NULL, tweet@word_TFIDF>
-     * output: <tweet@word, TFIDF>
+    /* input:  <tweet, (word_TFIDF)>
+     * output: <tweet, text>
      */
-    public static class Reduce_FeatSel extends Reducer<NullWritable, Text, Text, Text>
+    public static class Reduce_FeatSel extends Reducer<Text, Text, Text, Text>
     {
-        private java.util.Map<Text, Double> top_features = new HashMap<Text, Double>();
+        private HashMap tweet_words = new HashMap<Text, Double>();
 
-        private int feature_cnt = 0;
-        
-        public void reduce(NullWritable key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
+        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
         {
+            context.getCounter(Global_Counters.TWEETS_SIZE).increment(1);
+
+            String tweet_text = "";
+
             for(Text value : values) 
             {
                 String[] columns = value.toString().split("_");
-                top_features.put(new Text(columns[0]), Double.parseDouble(columns[1])); 
-
-                feature_cnt++;    
+                tweet_words.put(new Text(columns[0]), Double.parseDouble(columns[1]));    
             }
 
-            // sort the words by their TFIDF score
-            List list = new LinkedList(top_features.entrySet());
+            // sort the tweet's words by their TFIDF score
+            List list = new LinkedList(tweet_words.entrySet());
+
+            int num_of_words = tweet_words.size();
+            tweet_words.clear();
+
             Collections.sort(list, new Comparator()
                                     {
                                         public int compare(Object o1, Object o2) 
@@ -301,108 +292,45 @@ public class Improved_NB
                                         }
                                     });
 
-            HashMap sorted_top_features = new LinkedHashMap();
+            HashMap sorted_tweet_words = new LinkedHashMap();
             for(Iterator i = list.iterator(); i.hasNext();)
             {
                 java.util.Map.Entry entry = (java.util.Map.Entry) i.next();
-                sorted_top_features.put(entry.getKey(), entry.getValue());
+                sorted_tweet_words.put(entry.getKey(), entry.getValue());
             }
 
-            // hold the words with the biggest TFIDF score, by trimming down the ones with the lowest score until the 75% of the
-            // words remained in the list
-            while(sorted_top_features.size() > ((feature_cnt * 75) / 100))
-                sorted_top_features.remove(sorted_top_features.keySet().stream().findFirst().get());
+            // hold the words with the biggest TFIDF score, by trimming down the ones with the lowest score 
+            // until the 75% of the words remained in the list
+            while((sorted_tweet_words.size() > ((num_of_words * 75) / 100)) && (num_of_words > 1))
+                sorted_tweet_words.remove(sorted_tweet_words.keySet().stream().findFirst().get());
 
-            Set set = sorted_top_features.entrySet();
+            if(key.toString().endsWith("+"))
+            {
+                context.getCounter(Global_Counters.POS_TWEETS_SIZE).increment(1);
+                context.getCounter(Global_Counters.POS_WORDS_SIZE).increment(sorted_tweet_words.size());
+            }
+            else
+            {
+                context.getCounter(Global_Counters.NEG_TWEETS_SIZE).increment(1);
+                context.getCounter(Global_Counters.NEG_WORDS_SIZE).increment(sorted_tweet_words.size());
+            }
+
+            // put the most relevant words in a string
+            Set set = sorted_tweet_words.entrySet();
             Iterator it = set.iterator();
             while(it.hasNext())
             {
                 java.util.Map.Entry me = (java.util.Map.Entry) it.next();
-                context.write(new Text(me.getKey().toString()), new Text(String.valueOf(me.getValue())));
+                tweet_text += me.getKey().toString() + " ";
             }
+
+            context.write(key, new Text(tweet_text));
         }
     }
 
 
 
-    /* output: <tweet@word, TFIDF>
-     * output: <tweet, word>
-     */
-    public static class Map_RebuildDocs extends Mapper<Object, Text, Text, Text> 
-    {
-        private Text tweet_key = new Text();
-        private Text word_value = new Text();
-        
-        public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
-        {
-            String line[] = value.toString().split("\t");
-            String splitted_key[] = line[0].toString().split("@");
-
-            context.write(new Text(splitted_key[0]), new Text(splitted_key[1]));      
-        }
-    }
-
-    /* input:  <tweet, word>
-     * output: <tweet, (tweet_text#sentiment)>
-     */
-    public static class Reduce_RebuildDocs extends Reducer<Text, Text, Text, Text> 
-    {
-        private String positive_tweets_IDs;
-        private String[] positive_tweets_IDs_arr;
-        
-        protected void setup(Context context) throws IOException, InterruptedException 
-        {
-            positive_tweets_IDs = context.getConfiguration().get("positive_tweets_IDs");
-            positive_tweets_IDs_arr = positive_tweets_IDs.split("\\*");
-        }
-
-        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
-        {
-            String tweet = key.toString();
-
-            context.getCounter(Global_Counters.TWEETS_SIZE).increment(1);
-
-            String doc_text = "";
-
-            boolean flag = false;
-            String sentiment = "NEGATIVE";
-
-            for(String tweet_id : positive_tweets_IDs_arr)
-            {
-                if(tweet.equals(tweet_id))
-                    flag = true;
-            }
-
-            if(flag)
-            {
-                sentiment = "POSITIVE";
-                context.getCounter(Global_Counters.POS_TWEETS_SIZE).increment(1);
-            }
-            else
-                context.getCounter(Global_Counters.NEG_TWEETS_SIZE).increment(1);
-
-
-            for(Text value : values)
-            {
-                String word = value.toString();
-
-
-                doc_text += word + " ";
-
-                if(sentiment.equals("POSITIVE"))
-                    context.getCounter(Global_Counters.POS_WORDS_SIZE).increment(1);
-                else
-                    context.getCounter(Global_Counters.NEG_WORDS_SIZE).increment(1);
-            } 
-            
-            
-            context.write(key, new Text(doc_text + "#" + sentiment));
-        }
-    }
-
-
-
-    /* input:  <tweet, (tweet_text#sentiment)>
+    /* input:  <tweet, text>
      * output: <word, sentiment>
      */
     public static class Map_Training extends Mapper<Object, Text, Text, Text> 
@@ -413,13 +341,16 @@ public class Improved_NB
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
         {
             String[] line = value.toString().split("\t");
-            String[] splitted_value = line[1].toString().split("#");
-            String[] tweet_words = splitted_value[0].split(" ");
+            String[] tweet_words = line[1].toString().split(" ");
+
+            if(line[0].endsWith("+"))
+                sentiment_value.set("POSITIVE");
+            else
+                sentiment_value.set("NEGATIVE");
 
             for(String word : tweet_words)
             {
                 word_key.set(word);
-                sentiment_value.set(splitted_value[1]);
 
                 context.write(word_key, sentiment_value);
             }  
@@ -442,6 +373,7 @@ public class Improved_NB
             for(Text value : values)
             {
                 String sentiment = value.toString();
+
                 if(sentiment.equals("POSITIVE"))
                     positive_counter++;
                 else
@@ -607,12 +539,9 @@ public class Improved_NB
         Path tf_dir = new Path("tf");
         Path tfidf_dir = new Path("tfidf");
         Path features_dir = new Path("features");
-        Path rebuiltdocs_dir = new Path("rebuiltdocs");
         Path training_dir = new Path("training");
         Path testing_dir = new Path(args[1]);
         Path output_dir = new Path("output");
-
-        Path positive_tweets_id_list = new Path("positive_tweets_id_list"); // file with the tweet IDs with positive sentiment
 
         Configuration conf = new Configuration();
 
@@ -625,48 +554,37 @@ public class Improved_NB
             fs.delete(tfidf_dir, true);
         if(fs.exists(features_dir))
             fs.delete(features_dir, true);
-        if(fs.exists(rebuiltdocs_dir))
-            fs.delete(rebuiltdocs_dir, true);
         if(fs.exists(training_dir))
             fs.delete(training_dir, true);
         if(fs.exists(output_dir))
             fs.delete(output_dir, true);
-        if(fs.exists(positive_tweets_id_list))
-            fs.delete(positive_tweets_id_list, true);
 
         long start_time = System.nanoTime();
 
         Job wordcount_job = Job.getInstance(conf, "Word Count");
-        wordcount_job.setJarByClass(Improved_NB.class);
+        wordcount_job.setJarByClass(Modified_NB.class);
         wordcount_job.setMapperClass(Map_WordCount.class);
         wordcount_job.setCombinerClass(Reduce_WordCount.class);
         wordcount_job.setReducerClass(Reduce_WordCount.class);
+        wordcount_job.setNumReduceTasks(3);
         wordcount_job.setMapOutputKeyClass(Text.class);
         wordcount_job.setMapOutputValueClass(IntWritable.class);
         wordcount_job.setOutputKeyClass(Text.class);
         wordcount_job.setOutputValueClass(IntWritable.class);
-        FileInputFormat.addInputPath(wordcount_job, input_dir);
-        FileOutputFormat.setOutputPath(wordcount_job, wordcount_dir);
+        TextInputFormat.addInputPath(wordcount_job, input_dir);
+        TextInputFormat.setMaxInputSplitSize(wordcount_job, Long.valueOf(args[2]));
+        TextOutputFormat.setOutputPath(wordcount_job, wordcount_dir);
         wordcount_job.waitForCompletion(true);
-
-
-        // read the file with the tweet IDs with positive sentiment
-        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(positive_tweets_id_list)));
-        String line = br.readLine();
-        br.close();
-        conf.set("positive_tweets_IDs", line);
-
 
         // Counting the total number of tweets from the training data in order to calculate the TFIDF score of each feature
         int num_of_tweets = Math.toIntExact(wordcount_job.getCounters().findCounter(Global_Counters.NUM_OF_TWEETS).getValue());
         conf.set("num_of_tweets", String.valueOf(num_of_tweets));
-        System.out.println("TOTAL TWEET NUMBER: " + num_of_tweets);
-
 
         Job tf_job = Job.getInstance(conf, "TF");
-        tf_job.setJarByClass(Improved_NB.class);
+        tf_job.setJarByClass(Modified_NB.class);
         tf_job.setMapperClass(Map_TF.class);
         tf_job.setReducerClass(Reduce_TF.class);
+        tf_job.setNumReduceTasks(3);
         tf_job.setMapOutputKeyClass(Text.class);
         tf_job.setMapOutputValueClass(Text.class);
         tf_job.setOutputKeyClass(Text.class);
@@ -676,9 +594,10 @@ public class Improved_NB
         tf_job.waitForCompletion(true);
 
         Job tfidf_job = Job.getInstance(conf, "TFIDF");
-        tfidf_job.setJarByClass(Improved_NB.class);
+        tfidf_job.setJarByClass(Modified_NB.class);
         tfidf_job.setMapperClass(Map_TFIDF.class);
         tfidf_job.setReducerClass(Reduce_TFIDF.class);
+        tfidf_job.setNumReduceTasks(3);
         tfidf_job.setMapOutputKeyClass(Text.class);
         tfidf_job.setMapOutputValueClass(Text.class);
         tfidf_job.setOutputKeyClass(Text.class);
@@ -688,10 +607,11 @@ public class Improved_NB
         tfidf_job.waitForCompletion(true);
 
         Job feature_selection_job = Job.getInstance(conf, "Feature Selection");
-        feature_selection_job.setJarByClass(Improved_NB.class);
+        feature_selection_job.setJarByClass(Modified_NB.class);
         feature_selection_job.setMapperClass(Map_FeatSel.class);
         feature_selection_job.setReducerClass(Reduce_FeatSel.class);
-        feature_selection_job.setMapOutputKeyClass(NullWritable.class);
+        feature_selection_job.setNumReduceTasks(3);
+        feature_selection_job.setMapOutputKeyClass(Text.class);
         feature_selection_job.setMapOutputValueClass(Text.class);
         feature_selection_job.setOutputKeyClass(Text.class);
         feature_selection_job.setOutputValueClass(Text.class);
@@ -699,38 +619,27 @@ public class Improved_NB
         FileOutputFormat.setOutputPath(feature_selection_job, features_dir);
         feature_selection_job.waitForCompletion(true);
 
-        Job rebuilddocs_job = Job.getInstance(conf, "Rebuilding Documents");
-        rebuilddocs_job.setJarByClass(Improved_NB.class);
-        rebuilddocs_job.setMapperClass(Map_RebuildDocs.class);
-        rebuilddocs_job.setReducerClass(Reduce_RebuildDocs.class);    
-        rebuilddocs_job.setMapOutputKeyClass(Text.class);
-        rebuilddocs_job.setMapOutputValueClass(Text.class);
-        rebuilddocs_job.setOutputKeyClass(Text.class);
-        rebuilddocs_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(rebuilddocs_job, features_dir);
-        FileOutputFormat.setOutputPath(rebuilddocs_job, rebuiltdocs_dir);
-        rebuilddocs_job.waitForCompletion(true);
-
-        int tweets_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
+        int tweets_size = Math.toIntExact(feature_selection_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
         conf.set("tweets_size", String.valueOf(tweets_size));
-        int pos_tweets_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
+        int pos_tweets_size = Math.toIntExact(feature_selection_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
         conf.set("pos_tweets_size", String.valueOf(pos_tweets_size));
-        int neg_tweets_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
+        int neg_tweets_size = Math.toIntExact(feature_selection_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
         conf.set("neg_tweets_size", String.valueOf(neg_tweets_size));
-        int pos_words_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
+        int pos_words_size = Math.toIntExact(feature_selection_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
         conf.set("pos_words_size", String.valueOf(pos_words_size));
-        int neg_words_size = Math.toIntExact(rebuilddocs_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
+        int neg_words_size = Math.toIntExact(feature_selection_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
         conf.set("neg_words_size", String.valueOf(neg_words_size));
 
         Job training_job = Job.getInstance(conf, "Training");
-        training_job.setJarByClass(Improved_NB.class);
+        training_job.setJarByClass(Modified_NB.class);
         training_job.setMapperClass(Map_Training.class);
-        training_job.setReducerClass(Reduce_Training.class);    
+        training_job.setReducerClass(Reduce_Training.class);  
+        training_job.setNumReduceTasks(3);   
         training_job.setMapOutputKeyClass(Text.class);
         training_job.setMapOutputValueClass(Text.class);
         training_job.setOutputKeyClass(Text.class);
         training_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(training_job, rebuiltdocs_dir);
+        FileInputFormat.addInputPath(training_job, features_dir);
         FileOutputFormat.setOutputPath(training_job, training_dir);
         training_job.waitForCompletion(true);
 
@@ -738,14 +647,15 @@ public class Improved_NB
         conf.set("features_size", String.valueOf(features_size));
 
         Job testing_job = Job.getInstance(conf, "Testing");
-        testing_job.setJarByClass(Improved_NB.class);
+        testing_job.setJarByClass(Modified_NB.class);
         testing_job.setMapperClass(Map_Testing.class);  
         testing_job.setMapOutputKeyClass(Text.class);
         testing_job.setMapOutputValueClass(Text.class);
         testing_job.setOutputKeyClass(Text.class);
         testing_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(testing_job, testing_dir);
-        FileOutputFormat.setOutputPath(testing_job, output_dir);
+        TextInputFormat.addInputPath(testing_job, testing_dir);
+        TextInputFormat.setMaxInputSplitSize(testing_job, Long.valueOf(args[3]));
+        TextOutputFormat.setOutputPath(testing_job, output_dir);
         testing_job.waitForCompletion(true);
 
         System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
@@ -759,10 +669,12 @@ public class Improved_NB
         System.out.printf("%-10s %-10s \n", tp, fp);
         System.out.printf("%-10s %-10s \n\n", fn, tn);
 
-        System.out.printf("%-25s %-10s \n", "SENSITIVITY: ", ((double) tp) / (tp + fn));
-        System.out.printf("%-25s %-10s \n", "PRECISION: ", ((double) tp) / (tp + fp));
+        double weighted_precision = ((((double) tp) / (tp + fp) * pos_tweets_size) + (((double) tn) / (tn + fn) * neg_tweets_size)) / (pos_tweets_size + neg_tweets_size);
+        double weighted_recall = ((((double) tp) / (tp + fn) * pos_tweets_size) + (((double) tn) / (tn + fp) * neg_tweets_size)) / (pos_tweets_size + neg_tweets_size);
+
         System.out.printf("%-25s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
-        System.out.printf("%-25s %-10s \n", "BALANCED ACCURACY: ", ((double) (((double) tp) / (tp + fn) + ((double) tn) / (tn + fp))) / 2);
-        System.out.printf("%-25s %-10s \n", "F1 SCORE: ", ((double) (2 * tp)) / (2 * tp + fp + fn));
+        System.out.printf("%-25s %-10s \n", "PRECISION: ", weighted_precision);
+        System.out.printf("%-25s %-10s \n", "RECALL: ", weighted_recall);
+        System.out.printf("%-25s %-10s \n", "F1 MEASURE: ", 2 * (weighted_precision * weighted_recall) / (weighted_precision + weighted_recall));
     }
 }
