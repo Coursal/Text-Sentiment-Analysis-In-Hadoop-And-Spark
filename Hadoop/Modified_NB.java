@@ -23,13 +23,6 @@ import java.io.IOException;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
 
-/*
-Execution Guide:
-hadoop com.sun.tools.javac.Main Modified_NB.java
-jar cf Modified_NB.jar Modified_NB*.class
-hadoop jar Modified_NB.jar Modified_NB train_dir test_dir
-hadoop fs -cat output/part-r-00000
-*/
 
 public class Modified_NB
 {
@@ -669,12 +662,6 @@ public class Modified_NB
         System.out.printf("%-10s %-10s \n", tp, fp);
         System.out.printf("%-10s %-10s \n\n", fn, tn);
 
-        double weighted_precision = ((((double) tp) / (tp + fp) * pos_tweets_size) + (((double) tn) / (tn + fn) * neg_tweets_size)) / (pos_tweets_size + neg_tweets_size);
-        double weighted_recall = ((((double) tp) / (tp + fn) * pos_tweets_size) + (((double) tn) / (tn + fp) * neg_tweets_size)) / (pos_tweets_size + neg_tweets_size);
-
         System.out.printf("%-25s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
-        System.out.printf("%-25s %-10s \n", "PRECISION: ", weighted_precision);
-        System.out.printf("%-25s %-10s \n", "RECALL: ", weighted_recall);
-        System.out.printf("%-25s %-10s \n", "F1 MEASURE: ", 2 * (weighted_precision * weighted_recall) / (weighted_precision + weighted_recall));
     }
 }

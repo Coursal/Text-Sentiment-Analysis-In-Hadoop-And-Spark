@@ -13,11 +13,6 @@ import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 
-/*
-Execution Guide:
-sbt package
-spark-submit --master local ./target/scala-2.12/nb_2.12-0.1.jar spark_input_#
-*/
 
 object NB
 {
@@ -43,12 +38,11 @@ object NB
         // create a scala spark context for rdd management and a spark session for dataframe management
         val conf = new SparkConf().setAppName("Naive Bayes")
         val sc = new SparkContext(conf)
-        val spark = SparkSession.builder.appName("Naive Bayes").master("local").getOrCreate()
 
         val start_time = System.nanoTime()
 
         // read the .csv file with the training data 
-        val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_" + args(0) + "/tweets.csv")
+        val input = sc.textFile("hdfs://mpi6:19000/user/mpi/spark_input_" + args(0) + "/tweets.csv", 3)
                         .map(line => split_csv(line))     // split each line to columns...
                         .map(column => 
                                     {   // map the cleaned up tweet text as key and sentiment as value
@@ -103,11 +97,8 @@ object NB
         println(metrics.confusionMatrix)
         println("ACCURACY: " + metrics.accuracy)
         println("F1 SCORE: " + metrics.weightedFMeasure)
-        println("PRECISION: " + metrics.weightedPrecision)
-        println("SENSITIVITY: " + metrics.weightedTruePositiveRate)
-        println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds");
+        println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds")
 
-        spark.stop()
         sc.stop()   
     }
 }

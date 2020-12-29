@@ -13,11 +13,6 @@ import org.apache.spark.ml.classification.LinearSVC
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 
-/*
-Execution Guide:
-sbt package
-spark-submit --master local ./target/scala-2.12/svm_2.12-0.1.jar spark_input_#
-*/
 
 object SVM
 {
@@ -43,12 +38,11 @@ object SVM
         // create a scala spark context for rdd management and a spark session for dataframe management
         val conf = new SparkConf().setAppName("Support Vector Machines")
         val sc = new SparkContext(conf)
-        val spark = SparkSession.builder.appName("Support Vector Machines").master("local").getOrCreate()
 
         val start_time = System.nanoTime()
 
         // read the .csv file with the training data 
-        val input = sc.textFile("hdfs://localhost:9000/user/crsl/spark_input_" + args(0) + "/tweets.csv")
+        val input = sc.textFile("hdfs://mpi6:19000/user/mpi/spark_input_" + args(0) + "/tweets.csv", 3)
                         .map(line => split_csv(line))     // split each line to columns...
                         .map(column => 
                                     {   // map the cleaned up tweet text as key and sentiment as value
@@ -84,16 +78,13 @@ object SVM
         val input_idf_model = input_idf.fit(input_featurized_data)
 
         val input_rescaled_data = input_idf_model.transform(input_featurized_data)              // calculate TFIDF
-        //input_rescaled_data.select("label", "features").show()
 
         val Array(training_data, test_data) = input_rescaled_data.randomSplit(Array(0.75, 0.25), seed = 1234L)
 
         // create the SVM model, train it with the train data and classify/predict the test data 
         val lsvc = new LinearSVC().setMaxIter(10).setRegParam(0.1)
         val lsvc_model = lsvc.fit(training_data)
-
         val predictions = lsvc_model.transform(test_data)
-        //predictions.show()    // select example rows of predictions to display
         val end_time = System.nanoTime()
 
         // select each (prediction, true label) set and compute the test error, convert them to RDD, and use the MulticlassMetrics class
@@ -104,11 +95,8 @@ object SVM
         println(metrics.confusionMatrix)
         println("ACCURACY: " + metrics.accuracy)
         println("F1 SCORE: " + metrics.weightedFMeasure)
-        println("PRECISION: " + metrics.weightedPrecision)
-        println("SENSITIVITY: " + metrics.weightedTruePositiveRate)
-        println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds");
+        println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds")
 
-        spark.stop()
         sc.stop()   
     }
 }

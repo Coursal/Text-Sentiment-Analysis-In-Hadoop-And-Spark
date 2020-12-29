@@ -7,8 +7,8 @@ import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
@@ -21,13 +21,6 @@ import java.io.IOException;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
 
-/*
-Execution Guide:
-hadoop com.sun.tools.javac.Main NB.java
-jar cf NB.jar NB*.class
-hadoop jar NB.jar NB train_dir test_dir
-hadoop fs -cat output/part-r-00000
-*/
 
 public class NB
 {
@@ -298,13 +291,15 @@ public class NB
         Job training_job = Job.getInstance(conf, "Training");
         training_job.setJarByClass(NB.class);
         training_job.setMapperClass(Map_Training.class);
-        training_job.setReducerClass(Reduce_Training.class);    
+        training_job.setReducerClass(Reduce_Training.class); 
+        training_job.setNumReduceTasks(3);   
         training_job.setMapOutputKeyClass(Text.class);
         training_job.setMapOutputValueClass(Text.class);
         training_job.setOutputKeyClass(Text.class);
         training_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(training_job, input_dir);
-        FileOutputFormat.setOutputPath(training_job, training_dir);
+        TextInputFormat.addInputPath(training_job, input_dir);
+        TextInputFormat.setMaxInputSplitSize(training_job, Long.valueOf(args[2]));
+        TextOutputFormat.setOutputPath(training_job, training_dir);
         training_job.waitForCompletion(true);
 
         int tweets_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
@@ -327,8 +322,9 @@ public class NB
         testing_job.setMapOutputValueClass(Text.class);
         testing_job.setOutputKeyClass(Text.class);
         testing_job.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(testing_job, testing_dir);
-        FileOutputFormat.setOutputPath(testing_job, output_dir);
+        TextInputFormat.addInputPath(testing_job, testing_dir);
+        TextInputFormat.setMaxInputSplitSize(testing_job, Long.valueOf(args[3]));
+        TextOutputFormat.setOutputPath(testing_job, output_dir);
         testing_job.waitForCompletion(true);
 
         System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
@@ -342,10 +338,6 @@ public class NB
         System.out.printf("%-10s %-10s \n", tp, fp);
         System.out.printf("%-10s %-10s \n\n", fn, tn);
 
-        System.out.printf("%-25s %-10s \n", "SENSITIVITY: ", ((double) tp) / (tp + fn));
-        System.out.printf("%-25s %-10s \n", "PRECISION: ", ((double) tp) / (tp + fp));
         System.out.printf("%-25s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
-        System.out.printf("%-25s %-10s \n", "BALANCED ACCURACY: ", ((double) (((double) tp) / (tp + fn) + ((double) tn) / (tn + fp))) / 2);
-        System.out.printf("%-25s %-10s \n", "F1 SCORE: ", ((double) (2 * tp)) / (2 * tp + fp + fn));
     }
 }

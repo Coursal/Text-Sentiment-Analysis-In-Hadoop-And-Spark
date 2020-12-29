@@ -42,7 +42,7 @@ object Modified_NB
         val start_time = System.nanoTime()
 
         // read the .csv file with the training data 
-        val input = sc.textFile("hdfs://mpi6:19000/user/mpi/spark_input_" + args(0) + "/tweets.csv", 12)
+        val input = sc.textFile("hdfs://mpi6:19000/user/mpi/spark_input_" + args(0) + "/tweets.csv", 3)
                         .map(line => split_csv(line))     // split each line to columns...
                         .map(column => 
                                     {   // map the cleaned up tweet text as key and sentiment as value
@@ -94,9 +94,7 @@ object Modified_NB
         println(metrics.confusionMatrix)
         println("ACCURACY: " + metrics.accuracy)
         println("F1 SCORE: " + metrics.weightedFMeasure)
-        println("PRECISION: " + metrics.weightedPrecision)
-        println("SENSITIVITY: " + metrics.weightedTruePositiveRate)
-        println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds");
+        println("EXECUTION DURATION: " + (end_time - start_time) / 1000000000F + " seconds")
         
         sc.stop()
     }
