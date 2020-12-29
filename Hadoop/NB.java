@@ -109,7 +109,7 @@ public class NB
             int positive_counter = 0;
             int negative_counter = 0;
 
-            // for each word, count the occurences in tweets with positive/negative sentiment
+            // for each word, count the occurrences in tweets with positive/negative sentiment
             for(Text value : values)
             {
                 String sentiment = value.toString();
@@ -133,7 +133,7 @@ public class NB
         int features_size, tweets_size, pos_tweets_size, neg_tweets_size, pos_words_size, neg_words_size;
         Double pos_class_probability, neg_class_probability;
 
-        // hashmaps with each word as key and its number of occurences in each class as value
+        // hashmaps with each word as key and its number of occurrences in each class as value
         HashMap<String, Integer> pos_words = new HashMap<String, Integer>();
         HashMap<String, Integer> neg_words = new HashMap<String, Integer>();
 
@@ -159,7 +159,7 @@ public class NB
             neg_class_probability = ((double) neg_tweets_size) / tweets_size;
 
             // load the model of the last training job and fill two hashmaps of words with the number of
-            // occurences in positive and negative tweets
+            // occurrences in positive and negative tweets
             Path training_model = new Path("training");
             FileSystem model_fs = training_model.getFileSystem(context.getConfiguration());
             FileStatus[] file_status = model_fs.listStatus(training_model);

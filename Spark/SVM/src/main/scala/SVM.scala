@@ -62,7 +62,7 @@ object SVM
                             )
 
 
-        // convert the RDD type sets of training data to Dataframes with named columns in order to apply the TFIDF measure on them
+        // convert the RDD type sets of training data to dataframes with named columns in order to apply the TFIDF measure on them
         import spark.implicits._
         val input_dataframe = input.toDF("label", "tweet")
 
@@ -88,7 +88,7 @@ object SVM
         val end_time = System.nanoTime()
 
         // select each (prediction, true label) set and compute the test error, convert them to RDD, and use the MulticlassMetrics class
-        // to output the confussion matrix and some metrics
+        // to output the confusion matrix and some metrics
         val prediction_and_labels = predictions.select("prediction", "label").rdd.map(r => (r.getDouble(0), r.getDouble(1)))
 
         val metrics = new MulticlassMetrics(prediction_and_labels)
