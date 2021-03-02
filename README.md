@@ -2,7 +2,7 @@
 
 The source code developed and used for the purposes of my thesis with the same title under the guidance of my supervisor professor [Vasilis Mamalis](http://users.teiath.gr/vmamalis/) for the [Department of Informatics and Computer Engineering](http://www.ice.uniwa.gr/en/home/) of the [University of West Attica](https://www.uniwa.gr/en/).
 
-You can read the text and presentation of the thesis and cite it as seen [here]() (with DOI provided, of course).
+You can read the text and presentation of the thesis and cite it as seen [here](link to be put from the university's repository) (with DOI provided, of course).
 
 ## Main Objectives
 * studying the basics of text mining, sentiment analysis, MapReduce, and paraller/distributed computing
