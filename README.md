@@ -13,13 +13,13 @@ You can read the text and presentation of the thesis and cite it as seen [here](
 ## Developed Applications
 All the classifications models of the applications below use **75%** of the input for **training** and the rest **25%** for **testing** purposes.
 #### Using the Hadoop framework
-  * **Simple Version of Naive Bayes**
-  * **Modified Version of Naive Bayes** (using TFIDF to implement feature selection by only using the top 75% most relevant features)
+  * [Simple Version of Naive Bayes](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/blob/master/Hadoop/NB.java)
+  * [Modified Version of Naive Bayes](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/blob/master/Hadoop/Modified_NB.java) (using TFIDF to implement feature selection by only using the top 75% most relevant features)
 #### Using the Spark framework
-  * **Simple Version of Naive Bayes**
-  * **Modified Version of Naive Bayes** (using TFIDF to implement feature selection by only using features that are shown in 5 or more documents)
-  * **Simple Version of SVM**
-  * **Modified Version of SVM** (using TFIDF to implement feature selection by only using features that are shown in 5 or more documents)
+  * [Simple Version of Naive Bayes](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/blob/master/Spark/NB/src/main/scala/NB.scala)
+  * [Modified Version of Naive Bayes](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/blob/master/Spark/Modified_NB/src/main/scala/Modified_NB.scala) (using TFIDF to implement feature selection by only using features that are shown in 5 or more documents)
+  * [Simple Version of SVM](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/blob/master/Spark/SVM/src/main/scala/SVM.scala)
+  * [Modified Version of SVM](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/blob/master/Spark/Modified_SVM/src/main/scala/Modified_SVM.scala) (using TFIDF to implement feature selection by only using features that are shown in 5 or more documents)
   
  ## Input Data Used
  To train and test the classification models of each application, [this](http://thinknook.com/twitter-sentiment-analysis-training-corpus-dataset-2012-09-22/) dataset of 1.6 million tweets was used in `csv` format with each line representing a document/tweet with its unique ID, class label, and tweet text as seen below.
