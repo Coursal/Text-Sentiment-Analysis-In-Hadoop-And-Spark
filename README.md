@@ -24,7 +24,7 @@ All the classifications models of the applications below use **75%** of the inpu
  ## Input Data Used
  To train and test the classification models of each application, [this](http://thinknook.com/twitter-sentiment-analysis-training-corpus-dataset-2012-09-22/) dataset of 1.6 million tweets was used in `csv` format with each line representing a document/tweet with its unique ID, class label, and tweet text as seen below.
  
- *image here*
+![](readme_pics/input_data.png)
  
 For the Hadoop-based applications, 10 datasets that differ in length of tweets (100k up to 1m tweets) have been created and provided here under the [/input](https://github.com/Coursal/Text-Sentiment-Analysis-In-Hadoop-And-Spark/tree/master/input) directory named `train#` and `test#` (`#` being a number _1-10_).
  
