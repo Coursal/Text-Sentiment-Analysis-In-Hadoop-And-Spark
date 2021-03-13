@@ -2,10 +2,17 @@
 
 The source code developed and used for the purposes of my thesis with the same title under the guidance of my supervisor professor [Vasilis Mamalis](http://users.teiath.gr/vmamalis/) for the [Department of Informatics and Computer Engineering](http://www.ice.uniwa.gr/en/home/) of the [University of West Attica](https://www.uniwa.gr/en/).
 
-You can read the text and presentation of the thesis and cite it as seen [here](link to be put from the university's repository) (with DOI provided, of course).
+You can read the text and presentation of the thesis (both in greek) and cite it with the URIs below from the university's institutional repository):
+
+* https://polynoe.lib.uniwa.gr/xmlui/handle/11400/395
+
+* http://dx.doi.org/10.26265/polynoe-246
+
+
+`BY-NC-SA` – [Attribution-NonCommercial-ShareAlike](https://github.com/idleberg/Creative-Commons-Markdown/blob/master/4.0/by-nc-sa.markdown)
 
 ## Main Objectives
-* studying the basics of text mining, sentiment analysis, MapReduce, and paraller/distributed computing
+* studying the basics of text mining, sentiment analysis, MapReduce, and parallel/distributed computing
 * developing a number of applications for sentiment analysis using the Apache Hadoop and Apache Spark frameworks in a cluster of computers using Hadoop as infrastructure
 * analyzing the results both in classification (accuracy, F1 measure) from the confusion matrix) and parallel execution (execution time, scalability, speedup)
 * coming to conclusions for each application's performance and proposing possible extensions to be made in the future
